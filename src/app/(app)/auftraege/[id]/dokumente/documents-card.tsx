@@ -8,6 +8,7 @@ import { Dropzone } from "@/components/upload/dropzone";
 import { MAX_UPLOAD_BYTES } from "@/domain";
 import { formatDateTime } from "@/lib/utils";
 import { deleteDocument } from "./actions";
+import { AiExtractButton } from "@/components/upload/ai-extract-button";
 
 const STATUS: Record<Document["status"], { label: string; tone: "neutral" | "info" | "success" | "critical" | "warning" }> = {
   UPLOADED: { label: "Gespeichert", tone: "neutral" }, QUEUED: { label: "In Warteschlange", tone: "info" }, PROCESSING: { label: "In Verarbeitung", tone: "info" },
@@ -17,12 +18,12 @@ const KIND: Record<Document["kind"], string> = { PDF_TEXT: "PDF", PDF_SCAN: "PDF
 
 type Doc = Pick<Document, "id" | "fileName" | "kind" | "status" | "sizeBytes" | "pageCount" | "errorMessage" | "duplicateOfId" | "createdAt"> & { _count: { invoices: number } };
 
-export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked }: { orderId: string; docs: Doc[]; canUpload: boolean; canDelete: boolean; locked: boolean }) {
+export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai }: { orderId: string; docs: Doc[]; canUpload: boolean; canDelete: boolean; locked: boolean; ai: { available: boolean; reason?: string } }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Belege ({docs.length})</CardTitle>
-        <span className="text-xs text-muted-foreground">Verschlüsselt gespeichert · Verarbeitung lokal, ohne KI-Dienst</span>
+        <span className="text-xs text-muted-foreground">Verschlüsselt gespeichert · {ai.available ? "KI-Erkennung freigegeben (nur auf Knopfdruck)" : `Ohne KI: ${ai.reason ?? ""}`}</span>
       </CardHeader>
       {canUpload && !locked && (
         <div className="space-y-2 border-b p-5">
@@ -59,6 +60,9 @@ export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked }: {
                   <Link href={`/auftraege/${orderId}/dokumente/${d.id}/import`} className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium hover:bg-muted">
                     <Table2 className="size-3.5" />{d._count.invoices ? "Neu zuordnen" : "Spalten zuordnen"}
                   </Link>
+                )}
+                {(d.kind === "PDF_TEXT" || d.kind === "PDF_SCAN" || d.kind === "IMAGE") && canUpload && !locked && ai.available && (d.status !== "PROCESSING") && (
+                  <AiExtractButton documentId={d.id} label={d._count.invoices && d.kind !== "PDF_TEXT" ? "Erneut erkennen" : "KI-Erkennung"} />
                 )}
                 <Link href={`/auftraege/${orderId}/dokumente/${d.id}`} title="Ansehen" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted"><Eye className="size-4" /></Link>
                 {canDelete && !locked && (

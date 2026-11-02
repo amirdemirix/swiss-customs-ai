@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { getContext, can } from "@/server/context";
@@ -5,6 +6,7 @@ import { getOrderOverview } from "@/server/repositories/orders";
 import { getHistory } from "@/server/repositories/audit";
 import { OrderToolbar } from "./toolbar";
 import { DocumentsCard } from "./dokumente/documents-card";
+import { aiAvailability } from "@/server/services/ai-extraction";
 import { RatesCard } from "./kurse/rates-card";
 import { isLocked } from "@/domain";
 import { PageHeader } from "@/components/layout/page-header";
@@ -36,6 +38,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const ctx = await getContext();
   const o = await getOrderOverview(ctx.db, id);
   if (!o) notFound();
+  const ai = await aiAvailability(ctx.tenantId);
   const history = can(ctx.role, "audit.read") ? await getHistory(ctx.db, "CustomsOrder", o.id, 30) : null;
   const crit = o.issues.filter((i) => i.severity === "CRITICAL").length;
   const total = sum(o.declarationLines.map((d) => d.totalValue.toString()));
@@ -53,7 +56,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       />
 
       <div className="grid gap-6 [&>*]:min-w-0">
-        <DocumentsCard orderId={o.id} docs={o.documents} canUpload={can(ctx.role, "document.upload")} canDelete={can(ctx.role, "document.delete")} locked={isLocked(o.status)} />
+        <DocumentsCard orderId={o.id} docs={o.documents} canUpload={can(ctx.role, "document.upload")} canDelete={can(ctx.role, "document.delete")} locked={isLocked(o.status)} ai={ai} />
         <RatesCard orderId={o.id} target={o.declarationCurrency} currencies={o.invoices.map((i) => i.currency).filter((c): c is string => !!c)} rates={o.exchangeRates} canEdit={can(ctx.role, "order.write") && !isLocked(o.status)} />
         <Card>
           <CardHeader>
@@ -125,7 +128,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               <TBody>
                 {o.invoices.map((i) => (
                   <TR key={i.id}>
-                    <TD className="font-medium">{i.invoiceNumber ?? <Badge tone="critical">fehlt</Badge>}{i.reviewStatus === "NEEDS_REVIEW" && <Badge tone="warning" className="ml-2">zu prüfen</Badge>}</TD>
+                    <TD className="font-medium"><Link href={`/auftraege/${o.id}/rechnungen/${i.id}`} className="text-primary hover:underline">{i.invoiceNumber ?? <Badge tone="critical">ohne Nummer</Badge>}</Link>
+                      {i.reviewStatus === "NEEDS_REVIEW" && <Badge tone="warning" className="ml-2">zu prüfen</Badge>}{i.reviewStatus === "CONFIRMED" && <Badge tone="success" className="ml-2">bestätigt</Badge>}</TD>
                     <TD>{i.supplierName ?? "–"}</TD>
                     <TD>{formatDate(i.invoiceDate)}</TD>
                     <TD className="num">{i.totalAmount ? `${i.currency} ${formatCH(i.totalAmount.toString())}` : "–"}</TD>
