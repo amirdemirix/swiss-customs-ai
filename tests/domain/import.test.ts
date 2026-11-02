@@ -141,3 +141,13 @@ describe("PDF-Kopfdaten-Heuristik", () => {
     expect(looksScanned([text])).toBe(false);
   });
 });
+
+describe("Summenzeile ohne Rechnungsnummer", () => {
+  it("gehört zur vorherigen Rechnung statt eine leere Rechnung zu erzeugen", () => {
+    const r = rowsToInvoices([["R-1", "A", "8504.4000", "10"], ["R-1", "B", "8504.4000", "5"], ["", "Total", "", "15"]],
+      { invoiceNumber: 0, description: 1, tariffNumber: 2, lineAmount: 3 }, {});
+    expect(r.invoices).toHaveLength(1);
+    expect(r.invoices[0]).toMatchObject({ invoiceNumber: "R-1", totalAmount: "15" });
+    expect(r.problems.map((p) => p.message).join()).not.toContain("Keine Rechnungsnummer");
+  });
+});

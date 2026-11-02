@@ -89,6 +89,7 @@ function preference(raw: string | null): LineDraft["preferenceStatus"] {
 export function rowsToInvoices(dataRows: string[][], map: ColumnMap, defaults: ImportDefaults, firstRowNumber = 2): { invoices: InvoiceDraft[]; problems: RowProblem[] } {
   const problems: RowProblem[] = [];
   const byInvoice = new Map<string, InvoiceDraft>();
+  let lastInv: InvoiceDraft | undefined;
   const get = (r: string[], f: ImportField) => (map[f] === undefined ? null : clean(r[map[f]!]));
   const NUMERIC: ImportField[] = ["quantity", "unitPrice", "lineAmount", "netWeightKg", "grossWeightKg"];
   const decimalHint = inferDecimalSeparator(dataRows.flatMap((r) => NUMERIC.map((f) => get(r, f))));
@@ -99,6 +100,21 @@ export function rowsToInvoices(dataRows: string[][], map: ColumnMap, defaults: I
 
     const raw: Record<string, string> = {};
     for (const [f, i] of Object.entries(map)) if (i !== undefined && r[i]?.trim()) raw[f] = r[i].trim();
+
+    // Summenzeilen erkennen: Text „Total/Summe“ ohne Artikel/Tarif. Ohne eigene Rechnungsnummer
+    // gehören sie zur zuletzt gelesenen Rechnung (typisch: Total-Zeile unter der Tabelle).
+    {
+      const label = get(r, "description") ?? get(r, "articleNumber") ?? r.find((c) => c.trim()) ?? "";
+      const art = get(r, "articleNumber");
+      if (TOTAL_ROW.test(label) && !get(r, "tariffNumber") && !(art && !TOTAL_ROW.test(art))) {
+        const amt = parseAmount(get(r, "lineAmount"), decimalHint);
+        const ownNo = get(r, "invoiceNumber");
+        const target = ownNo ? byInvoice.get(ownNo) : lastInv ?? byInvoice.get(clean(defaults.invoiceNumber ?? undefined) ?? "∅");
+        if (amt && target) target.totalAmount = amt.toString();
+        problems.push({ row: rowNo, severity: "INFO", message: `Summenzeile „${label}“ übersprungen${amt && target ? ` (Total ${amt.toFixed(2)} als Rechnungstotal übernommen)` : ""}.` });
+        return;
+      }
+    }
 
     const invNo = get(r, "invoiceNumber") ?? clean(defaults.invoiceNumber ?? undefined);
     const key = invNo ?? "∅";
@@ -127,15 +143,8 @@ export function rowsToInvoices(dataRows: string[][], map: ColumnMap, defaults: I
     const description = get(r, "description");
     const article = get(r, "articleNumber");
     const tariffRaw = get(r, "tariffNumber");
-    // Summenzeilen erkennen: Text „Total/Summe“ ohne Artikel/Tarif
-    const label = description ?? article ?? r.find((c) => c.trim()) ?? "";
-    if (TOTAL_ROW.test(label) && !tariffRaw && !(article && !TOTAL_ROW.test(article))) {
-      const amt = parseAmount(get(r, "lineAmount"), decimalHint);
-      if (amt) inv.totalAmount = amt.toString();
-      problems.push({ row: rowNo, severity: "INFO", message: `Summenzeile „${label}“ übersprungen${amt ? ` (Total ${amt.toFixed(2)} als Rechnungstotal übernommen)` : ""}.` });
-      return;
-    }
 
+    lastInv = inv;
     const num = (f: ImportField) => {
       const v = get(r, f);
       if (v === null) return null;
