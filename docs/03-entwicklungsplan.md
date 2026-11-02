@@ -1,0 +1,13 @@
+# 03 – Entwicklungsplan
+
+| Phase | Inhalt | Status | Abnahmekriterium |
+|---|---|---|---|
+| 1 | Analyse, Risiken, Architektur, Datenmodell | ✅ erledigt | Dokumente in `docs/` |
+| 2 | Projektgerüst, Prisma-Schema + Migration, Designsystem, App-Shell, Domänenkern (Money, Tarif, Gruppierung, Validierung) inkl. Tests | ✅ erledigt | `npm test`, `npm run build` grün; Dashboard liest echte DB |
+| 3 | Login mit DB-Sessions, Rollen & Rechte, Mandantenwechsel, Auftrag bearbeiten/Status/Löschen mit Änderungsverlauf, Kunden + Artikelstamm, Einstellungen (Benutzer, KI-Freigabe, Aufbewahrung, Passwort) | ✅ erledigt | 73 Tests + E2E mit 4 Rollen |
+| 4 | Upload (Drag & Drop, Fortschritt), verschlüsselte Ablage, Hash-Duplikate, PDF-Textlayer, XLSX/CSV-Import mit Spaltenzuordnung | offen | Synthetische Testrechnungen werden importiert |
+| 5 | Job-Worker, Claude-Extraktion (Zod), Kontrollansicht (PDF links, Tabelle rechts), Änderungsverlauf | offen | Extraktion mit Konfidenz & Quellverweis |
+| 6 | Konsolidierung in DB, aufklappbare Zollübersicht, Währungsumrechnung, Plausibilitätsprüfungen | offen (Kernlogik bereits in Phase 2) | Gruppierungs- und Rundungstests |
+| 7 | Excel-Export (4 Blätter), Prüfprotokoll | offen | Summen im Export = DB-Summen (Test) |
+| 8 | Security-Härtung (RLS, Rate-Limits, CSP), Aufbewahrung/Löschung, Lasttest 5'000 Positionen | offen | Lasttest < 3 s Konsolidierung |
+| 9 | Docker-Deployment, CH-Hosting, Backup, Betriebsdoku | offen | Staging-Umgebung |

@@ -1,0 +1,12 @@
+# Lokale Entwicklungsdatenbank
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sca
+      POSTGRES_PASSWORD: sca_dev
+      POSTGRES_DB: swiss_customs
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+volumes:
+  pgdata:

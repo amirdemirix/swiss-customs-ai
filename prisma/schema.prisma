@@ -1,0 +1,539 @@
+// Swiss Customs AI – Datenmodell
+// Grundsatz: Jede fachliche Tabelle trägt tenantId (Mandantentrennung).
+// Geldbeträge: Decimal(18,4). Gewichte: Decimal(14,3) kg. Mengen: Decimal(18,4).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  /// Direkte (nicht gepoolte) Verbindung für Migrationen, z. B. Neon DATABASE_URL_UNPOOLED
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ───────────── Mandanten & Benutzer ─────────────
+
+model Tenant {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  /// Ausdrückliche Freigabe, Dokumente an externen KI-Dienst zu senden.
+  aiProcessingConsent   Boolean  @default(false)
+  aiConsentGrantedAt    DateTime?
+  aiConsentGrantedById  String?
+  /// Aufbewahrungsfrist der Originalbelege in Tagen (null = unbegrenzt bis manuelle Löschung)
+  retentionDays         Int?
+  reviewConfidenceThreshold Decimal @default(0.85) @db.Decimal(3, 2)
+  defaultCurrency       String   @default("CHF") @db.Char(3)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  memberships      Membership[]
+  customers        Customer[]
+  orders           CustomsOrder[]
+  documents        Document[]
+  invoices         Invoice[]
+  invoiceLines     InvoiceLine[]
+  groupingProfiles GroupingProfile[]
+  exchangeRates    ExchangeRate[]
+  auditLogs        AuditLog[]
+  articleMaster    ArticleMaster[]
+  jobs             ProcessingJob[]
+  exports          ExportFile[]
+  declarationLines DeclarationLine[]
+  issues           ValidationIssue[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+  sessions    Session[]
+}
+
+enum Role {
+  ADMIN
+  DECLARANT // Zolldeklarant
+  REVIEWER  // Prüfer
+  READ_ONLY
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  role      Role
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  ip        String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ───────────── Stammdaten ─────────────
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  number    String?
+  uid       String?  // CHE-UID
+  address   String?
+  country   String?  @db.Char(2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders CustomsOrder[]
+  articles ArticleMaster[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, name])
+}
+
+/// Kunden-Artikelstamm: Artikel-Nr. → bestätigte CH-Tarifnummer / Ursprung (Frage F4)
+model ArticleMaster {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  customerId         String
+  articleNumber      String
+  description        String?
+  tariffNumber       String?  @db.VarChar(9)  // NNNN.NNNN
+  statisticalKey     String?  @db.VarChar(3)
+  originCountry      String?  @db.Char(2)
+  confirmedById      String?
+  confirmedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, articleNumber])
+}
+
+// ───────────── Aufträge ─────────────
+
+enum Direction {
+  IMPORT
+  EXPORT
+  TRANSIT
+}
+
+enum TransportMode {
+  ROAD
+  RAIL
+  AIR
+  SEA
+  POST
+  PIPELINE
+  OTHER
+}
+
+enum OrderStatus {
+  DRAFT
+  PROCESSING
+  NEEDS_REVIEW
+  READY
+  EXPORTED
+  COMPLETED
+  ARCHIVED
+}
+
+model CustomsOrder {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  orderNumber        String
+  customerId         String?
+  direction          Direction
+  status             OrderStatus   @default(DRAFT)
+  consignor          String?       // Absender
+  consignee          String?       // Empfänger
+  dispatchCountry    String?       @db.Char(2)
+  destinationCountry String?       @db.Char(2)
+  transportMode      TransportMode?
+  reference          String?
+  orderDate          DateTime      @db.Date
+  remarks            String?
+  /// Zielwährung für die Konsolidierung
+  declarationCurrency String       @default("CHF") @db.Char(3)
+  groupingProfileId  String?
+  createdById        String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer         Customer?         @relation(fields: [customerId], references: [id])
+  groupingProfile  GroupingProfile?  @relation(fields: [groupingProfileId], references: [id])
+  documents        Document[]
+  invoices         Invoice[]
+  declarationLines DeclarationLine[]
+  exchangeRates    ExchangeRate[]
+  issues           ValidationIssue[]
+  exports          ExportFile[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, updatedAt])
+}
+
+// ───────────── Dokumente & Verarbeitung ─────────────
+
+enum DocumentKind {
+  PDF_TEXT
+  PDF_SCAN
+  IMAGE
+  SPREADSHEET
+  CSV
+  UNKNOWN
+}
+
+enum DocumentStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  EXTRACTED
+  FAILED
+  DUPLICATE
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  tenantId      String
+  orderId       String
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  sha256        String         @db.Char(64)
+  storageKey    String         // verschlüsselt abgelegt
+  encryptionIv  String?
+  kind          DocumentKind   @default(UNKNOWN)
+  status        DocumentStatus @default(UPLOADED)
+  pageCount     Int?
+  errorMessage  String?
+  duplicateOfId String?
+  uploadedById  String
+  createdAt     DateTime       @default(now())
+  deletedAt     DateTime?
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order    CustomsOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+  jobs     ProcessingJob[]
+
+  @@index([tenantId, sha256])
+  @@index([orderId])
+}
+
+enum JobType {
+  PARSE_DOCUMENT
+  OCR
+  AI_EXTRACT
+  VALIDATE_ORDER
+  CONSOLIDATE_ORDER
+  EXPORT_EXCEL
+  RETENTION_PURGE
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+/// Postgres-basierte Job-Queue (SKIP LOCKED) – kein Redis nötig.
+model ProcessingJob {
+  id          String    @id @default(cuid())
+  tenantId    String
+  documentId  String?
+  orderId     String?
+  type        JobType
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  runAfter    DateTime  @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  payload     Json?
+  result      Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([tenantId])
+}
+
+// ───────────── Rechnungen ─────────────
+
+enum ReviewStatus {
+  EXTRACTED     // automatisch erfasst
+  NEEDS_REVIEW  // unsicher/unvollständig
+  CONFIRMED     // fachlich bestätigt
+}
+
+model Invoice {
+  id              String       @id @default(cuid())
+  tenantId        String
+  orderId         String
+  documentId      String?
+  invoiceNumber   String?
+  invoiceDate     DateTime?    @db.Date
+  supplierName    String?
+  supplierCountry String?      @db.Char(2)
+  currency        String?      @db.Char(3)
+  totalAmount     Decimal?     @db.Decimal(18, 4) // laut Rechnung
+  incoterm        String?      @db.VarChar(3)
+  incotermPlace   String?
+  freightAmount   Decimal?     @db.Decimal(18, 4)
+  insuranceAmount Decimal?     @db.Decimal(18, 4)
+  discountAmount  Decimal?     @db.Decimal(18, 4)
+  grossWeightKg   Decimal?     @db.Decimal(14, 3) // Sendungsangabe auf Rechnungsebene
+  netWeightKg     Decimal?     @db.Decimal(14, 3)
+  packages        String?
+  reviewStatus    ReviewStatus @default(EXTRACTED)
+  extractionMeta  Json?        // Konfidenzen, Modell, Version
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order    CustomsOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  document Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  lines    InvoiceLine[]
+
+  @@index([tenantId, orderId])
+  @@index([tenantId, supplierName, invoiceNumber])
+}
+
+enum ValueSource {
+  INVOICE        // aus dem Beleg gelesen
+  USER           // manuell erfasst/korrigiert
+  AI_SUGGESTION  // KI-Vorschlag, nicht bestätigt
+  MASTER_DATA    // aus Artikelstamm
+  CALCULATED     // berechnet (dokumentiert)
+}
+
+enum PreferenceStatus {
+  NONE        // Normalansatz
+  CLAIMED     // Präferenz beansprucht
+  UNKNOWN
+}
+
+model InvoiceLine {
+  id                   String           @id @default(cuid())
+  tenantId             String
+  invoiceId            String
+  lineNo               Int
+  articleNumber        String?
+  description          String?
+  tariffNumber         String?          @db.VarChar(9)
+  tariffNumberSource   ValueSource?
+  statisticalKey       String?          @db.VarChar(3)
+  originCountry        String?          @db.Char(2)
+  originSource         ValueSource?
+  preferenceStatus     PreferenceStatus @default(UNKNOWN)
+  customsProcedure     String?          // z. B. Veranlagungsart / Verfahren (konfigurierbar)
+  quantity             Decimal?         @db.Decimal(18, 4)
+  unit                 String?          @db.VarChar(10)
+  unitPrice            Decimal?         @db.Decimal(18, 6)
+  lineAmount           Decimal?         @db.Decimal(18, 4)
+  netWeightKg          Decimal?         @db.Decimal(14, 3)
+  grossWeightKg        Decimal?         @db.Decimal(14, 3)
+  packaging            String?
+  extraAttributes      Json?            // weitere gruppierungsrelevante Merkmale
+  reviewStatus         ReviewStatus     @default(EXTRACTED)
+  /// Feld → { confidence, page, bbox, rawText }
+  fieldMeta            Json?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  tenant  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice Invoice                 @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sources DeclarationLineSource[]
+
+  @@unique([invoiceId, lineNo])
+  @@index([tenantId, tariffNumber, originCountry])
+  @@index([tenantId, articleNumber])
+}
+
+// ───────────── Konsolidierung ─────────────
+
+/// Konfigurierbare Gruppierungsregeln (Frage F1)
+model GroupingProfile {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  isDefault   Boolean  @default(false)
+  /// Liste der Schlüsselmerkmale, z. B. ["tariffNumber","statisticalKey","originCountry","preferenceStatus","customsProcedure"]
+  keyFields   String[]
+  /// Zusätzliche Merkmale aus extraAttributes
+  extraKeys   String[]
+  /// Merkmale, deren Fehlen eine Zusammenfassung verhindert
+  requiredFields String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders CustomsOrder[]
+
+  @@unique([tenantId, name])
+}
+
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  tenantId     String
+  orderId      String?
+  fromCurrency String   @db.Char(3)
+  toCurrency   String   @db.Char(3)
+  /// Einheiten Zielwährung je 1 Einheit Ausgangswährung
+  rate         Decimal  @db.Decimal(18, 8)
+  validOn      DateTime @db.Date
+  source       String   // z. B. "BAZG Tageskurs", "ESTV", "manuell"
+  enteredById  String?
+  createdAt    DateTime @default(now())
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  CustomsOrder? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, fromCurrency, toCurrency, validOn])
+}
+
+model DeclarationLine {
+  id              String           @id @default(cuid())
+  tenantId        String
+  orderId         String
+  position        Int
+  groupKey        String           // deterministischer Schlüssel
+  tariffNumber    String?          @db.VarChar(9)
+  statisticalKey  String?          @db.VarChar(3)
+  originCountry   String?          @db.Char(2)
+  preferenceStatus PreferenceStatus @default(UNKNOWN)
+  customsProcedure String?
+  description     String?
+  totalValue      Decimal          @db.Decimal(18, 2)
+  currency        String           @db.Char(3)
+  totalQuantity   Decimal?         @db.Decimal(18, 4)
+  quantityUnit    String?          @db.VarChar(10)
+  netWeightKg     Decimal?         @db.Decimal(14, 3)
+  grossWeightKg   Decimal?         @db.Decimal(14, 3)
+  attributes      Json?
+  createdAt       DateTime         @default(now())
+
+  tenant  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order   CustomsOrder            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sources DeclarationLineSource[]
+
+  @@unique([orderId, position])
+  @@index([tenantId, orderId])
+}
+
+model DeclarationLineSource {
+  declarationLineId String
+  invoiceLineId     String
+  convertedValue    Decimal @db.Decimal(18, 4)
+  exchangeRateId    String?
+
+  declarationLine DeclarationLine @relation(fields: [declarationLineId], references: [id], onDelete: Cascade)
+  invoiceLine     InvoiceLine     @relation(fields: [invoiceLineId], references: [id], onDelete: Cascade)
+
+  @@id([declarationLineId, invoiceLineId])
+}
+
+// ───────────── Prüfung, Audit, Export ─────────────
+
+enum Severity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+model ValidationIssue {
+  id            String    @id @default(cuid())
+  tenantId      String
+  orderId       String
+  code          String    // z. B. TARIFF_MISSING
+  severity      Severity
+  message       String
+  entityType    String    // Invoice | InvoiceLine | DeclarationLine | Document
+  entityId      String
+  field         String?
+  resolvedAt    DateTime?
+  resolvedById  String?
+  createdAt     DateTime  @default(now())
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  CustomsOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, orderId, severity])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String?
+  action     String   // CREATE | UPDATE | DELETE | CONFIRM | EXPORT | LOGIN | AI_SEND ...
+  entityType String
+  entityId   String
+  field      String?
+  oldValue   Json?
+  newValue   Json?
+  reason     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+}
+
+enum ExportKind {
+  EXCEL_OVERVIEW
+  DECLARATION_JSON
+}
+
+model ExportFile {
+  id          String     @id @default(cuid())
+  tenantId    String
+  orderId     String
+  kind        ExportKind
+  storageKey  String
+  sha256      String     @db.Char(64)
+  createdById String
+  createdAt   DateTime   @default(now())
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  CustomsOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, orderId])
+}

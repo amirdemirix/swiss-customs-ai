@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 20% 98%;
+  --surface: 0 0% 100%;
+  --foreground: 222 30% 12%;
+  --muted: 214 20% 95%;
+  --muted-foreground: 218 12% 42%;
+  --border: 216 18% 89%;
+  --primary: 216 78% 42%;
+  --primary-foreground: 0 0% 100%;
+  --critical: 0 68% 44%;
+  --critical-soft: 0 80% 96%;
+  --warning: 32 90% 38%;
+  --warning-soft: 40 95% 94%;
+  --info: 205 75% 40%;
+  --info-soft: 205 80% 95%;
+  --success: 152 60% 32%;
+  --success-soft: 150 50% 94%;
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; font-feature-settings: "tnum" 1, "cv11" 1; }
+  h1 { @apply text-xl font-semibold tracking-tight; }
+  h2 { @apply text-base font-semibold; }
+}
+
+/* Zahlen in Tabellen immer tabellarisch & rechtsbündig */
+.num { @apply text-right tabular-nums; }
