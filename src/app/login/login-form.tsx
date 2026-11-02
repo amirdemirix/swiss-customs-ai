@@ -9,8 +9,8 @@ export function LoginForm({ next }: { next?: string }) {
   return (
     <form action={action} className="space-y-4">
       {next && <input type="hidden" name="next" value={next} />}
-      <label className="block space-y-1.5"><span className="text-xs font-medium text-muted-foreground">E-Mail</span>
-        <Input name="email" type="email" autoComplete="username" required autoFocus defaultValue={state.email} /></label>
+      <label className="block space-y-1.5"><span className="text-xs font-medium text-muted-foreground">Benutzername oder E-Mail</span>
+        <Input name="email" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} required autoFocus defaultValue={state.email} /></label>
       <label className="block space-y-1.5"><span className="text-xs font-medium text-muted-foreground">Passwort</span>
         <Input name="password" type="password" autoComplete="current-password" required /></label>
       {state.error && <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-sm text-critical">{state.error}</p>}
