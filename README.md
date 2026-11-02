@@ -3,7 +3,7 @@
 Verzollungsvorbereitung für Schweizer Zollagenturen: viele Handelsrechnungen → geprüfte,
 nachvollziehbare Anmeldepositionen (Tarifnummer / Ursprung / Präferenz / Verfahren …).
 
-> **Status:** Phase 1–4 abgeschlossen. Keine Passar-Direktintegration. KI-Tarifvorschläge sind nie
+> **Status:** Phase 1–9 umgesetzt (Testumgebung). Betrieb: `docs/04-betrieb.md`, Datenschutz: `docs/05-datenschutz.md`. Keine Passar-Direktintegration. KI-Tarifvorschläge sind nie
 > eine bestätigte Tarifeinreihung. Alle Testdaten sind synthetisch.
 
 ## Schnellstart (lokal)

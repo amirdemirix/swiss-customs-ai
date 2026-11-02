@@ -1,6 +1,8 @@
 import { getContextOrNull } from "@/server/context";
 import { readFile } from "@/server/storage/file-store";
 
+import { contentDisposition } from "@/lib/utils";
+
 export const runtime = "nodejs";
 
 /** Liefert die entschlüsselte Originaldatei – nur für Mitglieder des Mandanten. */
@@ -20,7 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     headers: {
       "Content-Type": doc.mimeType,
       "Content-Length": String(data.length),
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(doc.fileName)}`,
+      "Content-Disposition": contentDisposition(inline ? "inline" : "attachment", doc.fileName),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
       // Typ stammt aus der Magic-Byte-Prüfung + nosniff → Browser interpretiert Uploads nie als HTML/JS.

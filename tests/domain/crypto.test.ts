@@ -29,3 +29,26 @@ describe("Belegverschlüsselung (AES-256-GCM)", () => {
     expect(sha256(Buffer.from("abc"))).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   });
 });
+
+describe("Schlüsselrotation", () => {
+  it("liest alte Belege mit altem Schlüssel, verschlüsselt neue mit neuem", async () => {
+    const { randomBytes } = await import("node:crypto");
+    const oldKey = process.env.FILE_ENCRYPTION_KEY!;
+    const plain = Buffer.from("Beleg");
+    const before = encrypt(plain, "t:d");
+    expect(before.keyId).toBe("v1");
+    process.env.FILE_ENCRYPTION_KEY_ID = "v2";
+    process.env.FILE_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+    process.env.FILE_ENCRYPTION_KEY_V1 = oldKey;
+    try {
+      expect(decrypt(before, "t:d").equals(plain)).toBe(true);
+      const after = encrypt(plain, "t:d");
+      expect(after.keyId).toBe("v2");
+      expect(decrypt(after, "t:d").equals(plain)).toBe(true);
+    } finally {
+      process.env.FILE_ENCRYPTION_KEY = oldKey;
+      delete process.env.FILE_ENCRYPTION_KEY_ID;
+      delete process.env.FILE_ENCRYPTION_KEY_V1;
+    }
+  });
+});

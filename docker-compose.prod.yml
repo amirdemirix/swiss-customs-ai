@@ -1,0 +1,21 @@
+# Vollständiger Betrieb mit eigener Datenbank (Beispiel). Secrets über .env.production bereitstellen.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sca
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD setzen}
+      POSTGRES_DB: swiss_customs
+    volumes: [pgdata:/var/lib/postgresql/data]
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: [db]
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://sca:${POSTGRES_PASSWORD}@db:5432/swiss_customs?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://sca:${POSTGRES_PASSWORD}@db:5432/swiss_customs?schema=public
+    ports: ["3000:3000"]
+volumes:
+  pgdata:

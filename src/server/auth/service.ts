@@ -1,7 +1,7 @@
 import type { PrismaClient, Role } from "@prisma/client";
 import { hashToken, newSessionToken, SESSION_TTL_MS } from "./token";
 import { verifyPasswordConstantTime } from "./password";
-import { loginLimiter, type RateLimiter } from "./rate-limit";
+import { loginLimiter, type Limiter } from "./rate-limit";
 
 export type LoginResult =
   | { ok: true; token: string; expiresAt: Date; userId: string; tenantId: string }
@@ -11,10 +11,10 @@ export type LoginResult =
 export async function login(
   db: PrismaClient,
   input: { email: string; password: string; ip?: string | null; userAgent?: string | null },
-  limiter: RateLimiter = loginLimiter,
+  limiter: Limiter = loginLimiter,
 ): Promise<LoginResult> {
   const email = input.email.trim().toLowerCase();
-  const rl = limiter.check(`${email}|${input.ip ?? "-"}`);
+  const rl = await limiter.check(`${email}|${input.ip ?? "-"}`);
   if (!rl.allowed) return { ok: false, reason: "RATE_LIMITED", retryAfterMs: rl.retryAfterMs };
 
   const user = await db.user.findUnique({ where: { email }, include: { memberships: { orderBy: { createdAt: "asc" } } } });
@@ -29,7 +29,7 @@ export async function login(
   const membership = user.memberships[0];
   if (!membership) return { ok: false, reason: "NO_MEMBERSHIP" };
 
-  limiter.reset(`${email}|${input.ip ?? "-"}`);
+  await limiter.reset(`${email}|${input.ip ?? "-"}`);
   const token = newSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   await db.$transaction([

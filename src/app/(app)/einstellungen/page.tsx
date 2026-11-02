@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getContext, can, ROLE_LABEL } from "@/server/context";
 import { prismaRoot } from "@/server/db";
 import { PageHeader } from "@/components/layout/page-header";
@@ -27,7 +28,8 @@ export default async function Settings() {
 
   return (
     <>
-      <PageHeader title="Einstellungen" description={ctx.tenantName} />
+      <PageHeader title="Einstellungen" description={ctx.tenantName}
+        actions={can(ctx.role, "audit.read") ? <Link href="/einstellungen/protokoll" className="text-sm text-primary hover:underline">Audit-Protokoll ansehen</Link> : undefined} />
       <div className="grid gap-6 [&>*]:min-w-0">
         {tenant && (
           <>

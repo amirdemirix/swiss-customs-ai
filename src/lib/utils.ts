@@ -14,3 +14,10 @@ export function formValues(fd: FormData): Record<string, string> {
   for (const [k, v] of fd.entries()) if (typeof v === "string" && !/password|^current$|^next$|^repeat$|^\$ACTION/i.test(k)) out[k] = v;
   return out;
 }
+
+/** Content-Disposition mit ASCII-Fallback (Umlaute) und UTF-8-Namen nach RFC 6266/5987. */
+export function contentDisposition(kind: "inline" | "attachment", fileName: string) {
+  const ascii = fileName.normalize("NFD").replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue")
+    .replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  return `${kind}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}

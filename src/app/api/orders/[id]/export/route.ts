@@ -5,6 +5,8 @@ import { buildOrderWorkbook } from "@/server/export/excel";
 import { DeclarationNotReadyError, neutralJsonAdapter } from "@/server/export/declaration";
 import { sha256 } from "@/server/storage/crypto";
 
+import { contentDisposition } from "@/lib/utils";
+
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
@@ -45,6 +47,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     await ctx.db.auditLog.create({ data: { tenantId: ctx.tenantId, userId: ctx.userId, action: "STATUS", entityType: "CustomsOrder", entityId: id, field: "status", oldValue: "READY", newValue: "EXPORTED" } });
   }
   return new Response(new Uint8Array(body), {
-    headers: { "Content-Type": contentType, "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`, "Cache-Control": "private, no-store", "X-Content-SHA256": hash },
+    headers: { "Content-Type": contentType, "Content-Disposition": contentDisposition("attachment", fileName), "Cache-Control": "private, no-store", "X-Content-SHA256": hash },
   });
 }
