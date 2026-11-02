@@ -7,6 +7,8 @@ export const PERMISSIONS = {
   "order.delete": ["ADMIN"],
   "customer.write": ["ADMIN", "DECLARANT"],
   "invoice.edit": ["ADMIN", "DECLARANT", "REVIEWER"],
+  "document.upload": ["ADMIN", "DECLARANT"],
+  "document.delete": ["ADMIN", "DECLARANT"],
   "tariff.confirm": ["ADMIN", "DECLARANT", "REVIEWER"],
   "export.create": ["ADMIN", "DECLARANT"],
   "settings.manage": ["ADMIN"],

@@ -9,3 +9,8 @@ export * from "./validation/rules";
 export * from "./orders/status";
 export * from "./audit/diff";
 export * from "./users/membership-rules";
+export * from "./documents/detect";
+export * from "./documents/csv";
+export * from "./documents/header-heuristics";
+export * from "./import/columns";
+export * from "./import/rows-to-invoices";

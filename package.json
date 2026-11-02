@@ -15,7 +15,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
-    "vercel-build": "prisma migrate deploy && tsx prisma/seed.ts --if-empty && next build"
+    "vercel-build": "prisma migrate deploy && tsx prisma/seed.ts --if-empty && next build",
+    "samples": "tsx scripts/generate-samples.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -26,12 +27,14 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "decimal.js": "^10.6.0",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.544.0",
     "next": "^15.5.28",
     "react": "^19.1.10",
     "react-dom": "^19.1.10",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.3.1",
+    "unpdf": "^1.8.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -39,6 +42,7 @@
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "autoprefixer": "^10.4.21",
+    "pdf-lib": "^1.17.1",
     "postcss": "^8.5.6",
     "prisma": "^6.16.2",
     "tailwindcss": "^3.4.17",

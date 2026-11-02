@@ -3,7 +3,7 @@
 Verzollungsvorbereitung für Schweizer Zollagenturen: viele Handelsrechnungen → geprüfte,
 nachvollziehbare Anmeldepositionen (Tarifnummer / Ursprung / Präferenz / Verfahren …).
 
-> **Status:** Phase 1–3 abgeschlossen. Keine Passar-Direktintegration. KI-Tarifvorschläge sind nie
+> **Status:** Phase 1–4 abgeschlossen. Keine Passar-Direktintegration. KI-Tarifvorschläge sind nie
 > eine bestätigte Tarifeinreihung. Alle Testdaten sind synthetisch.
 
 ## Schnellstart (lokal)
@@ -11,7 +11,7 @@ nachvollziehbare Anmeldepositionen (Tarifnummer / Ursprung / Präferenz / Verfah
 ```bash
 npm install
 docker compose up -d          # oder eigene PostgreSQL 16-Instanz
-cp .env.example .env          # DATABASE_URL anpassen
+cp .env.example .env          # DATABASE_URL anpassen, FILE_ENCRYPTION_KEY setzen: openssl rand -base64 32
 npx prisma migrate deploy
 npm run db:seed               # synthetische Daten: 2 Mandanten, 37 Rechnungen, 654 Positionen
 npm run dev                   # http://localhost:3000
@@ -37,6 +37,7 @@ Für Tests über HTTP auf einem anderen Host: `INSECURE_COOKIES=true` (nie in Pr
 | `npm run typecheck` | TypeScript-Prüfung |
 | `npm run build` | Produktionsbuild |
 | `npm run db:migrate` | Neue Migration erstellen |
+| `npm run samples` | Synthetische Beispielrechnungen (CSV/XLSX/PDF) nach `public/beispiele/` erzeugen |
 
 ## Struktur
 

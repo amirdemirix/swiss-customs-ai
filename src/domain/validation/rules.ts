@@ -26,6 +26,8 @@ export interface InvoiceInput {
   /** Kopfabzüge/-zuschläge, die in totalAmount enthalten sind (Rabatt negativ erfassen) */
   headerAdjustments?: DecInput | null;
   documentSha256?: string | null;
+  /** Herkunftsdokument – mehrere Rechnungen aus derselben Datei (z. B. CSV) sind keine Duplikate */
+  documentId?: string | null;
   lines: LineInput[];
 }
 
@@ -117,14 +119,14 @@ export function validateOrder(invoices: InvoiceInput[], declarationCurrency: str
   const out: Issue[] = invoices.flatMap((i) => validateInvoice(i, o));
 
   // Duplikate: gleicher Dateihash oder gleicher Lieferant + Rechnungsnummer
-  const seenHash = new Map<string, InvoiceInput>();
+  const seenHash = new Map<string, InvoiceInput>(); // sha256 → erste Rechnung eines ANDEREN Dokuments
   const seenNo = new Map<string, InvoiceInput>();
   for (const inv of invoices) {
     if (inv.documentSha256) {
       const prev = seenHash.get(inv.documentSha256);
-      if (prev) out.push({ code: "DUPLICATE_FILE", severity: "CRITICAL", entityType: "Invoice", entityId: inv.id,
+      if (prev && prev.documentId !== inv.documentId) out.push({ code: "DUPLICATE_FILE", severity: "CRITICAL", entityType: "Invoice", entityId: inv.id,
         message: `Rechnung ${inv.invoiceNumber ?? "?"}: identische Datei wurde bereits hochgeladen (Rechnung ${prev.invoiceNumber ?? prev.id}).` });
-      else seenHash.set(inv.documentSha256, inv);
+      else if (!prev) seenHash.set(inv.documentSha256, inv);
     }
     if (inv.invoiceNumber) {
       const k = `${(inv.supplierName ?? "").trim().toLowerCase()}|${inv.invoiceNumber.trim().toLowerCase()}`;

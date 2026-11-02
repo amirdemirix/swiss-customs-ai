@@ -24,10 +24,16 @@ export interface RequestContext {
 
 /** Ermittelt Benutzer und Mandant aus der Session. Ohne gültige Session → Login. */
 export async function getContext(): Promise<RequestContext> {
+  const ctx = await getContextOrNull();
+  if (!ctx) redirect("/login");
+  return ctx;
+}
+
+/** Für API-Routen: null statt Weiterleitung (→ 401). */
+export async function getContextOrNull(): Promise<RequestContext | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const s = await resolveSession(prismaRoot, token);
-  if (!s) redirect("/login");
-  return { ...s, db: tenantDb(s.tenantId) };
+  return s ? { ...s, db: tenantDb(s.tenantId) } : null;
 }
 
 /** Für Seiten: ohne Berechtigung → Hinweisseite statt Fehler. */

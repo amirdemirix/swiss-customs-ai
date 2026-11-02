@@ -4,11 +4,14 @@ import { getContext, can } from "@/server/context";
 import { getOrderOverview } from "@/server/repositories/orders";
 import { getHistory } from "@/server/repositories/audit";
 import { OrderToolbar } from "./toolbar";
+import { DocumentsCard } from "./dokumente/documents-card";
+import { RatesCard } from "./kurse/rates-card";
+import { isLocked } from "@/domain";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatCH, sum } from "@/domain";
+import { formatCH, round, sum } from "@/domain";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
 const SEV = { CRITICAL: { tone: "critical", label: "Kritisch" }, WARNING: { tone: "warning", label: "Warnung" }, INFO: { tone: "info", label: "Info" } } as const;
@@ -36,6 +39,10 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const history = can(ctx.role, "audit.read") ? await getHistory(ctx.db, "CustomsOrder", o.id, 30) : null;
   const crit = o.issues.filter((i) => i.severity === "CRITICAL").length;
   const total = sum(o.declarationLines.map((d) => d.totalValue.toString()));
+  // Exakte Summe (ungerundete Umrechnung) zur transparenten Anzeige der Rundungsdifferenz
+  const exactParts = o.declarationLines.map((d) => (d.attributes as { valueExact?: string | null } | null)?.valueExact);
+  const exact = exactParts.every((x) => x != null) ? sum(exactParts as string[]) : null;
+  const roundingDiff = exact ? total.minus(round(exact)) : null;
 
   return (
     <>
@@ -46,10 +53,19 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       />
 
       <div className="grid gap-6 [&>*]:min-w-0">
+        <DocumentsCard orderId={o.id} docs={o.documents} canUpload={can(ctx.role, "document.upload")} canDelete={can(ctx.role, "document.delete")} locked={isLocked(o.status)} />
+        <RatesCard orderId={o.id} target={o.declarationCurrency} currencies={o.invoices.map((i) => i.currency).filter((c): c is string => !!c)} rates={o.exchangeRates} canEdit={can(ctx.role, "order.write") && !isLocked(o.status)} />
         <Card>
           <CardHeader>
             <CardTitle>Zollübersicht – {o.declarationLines.length} Anmeldepositionen</CardTitle>
-            <span className="text-sm tabular-nums">Total <strong>{o.declarationCurrency} {formatCH(total.toString())}</strong></span>
+            <span className="text-right text-sm tabular-nums">
+              Total <strong>{o.declarationCurrency} {formatCH(total.toString())}</strong>
+              {roundingDiff && !roundingDiff.isZero() && (
+                <span className="block text-xs text-muted-foreground" title="Jede Anmeldeposition wird einzeln auf 2 Stellen gerundet">
+                  Summe gerundeter Positionen · exakt {formatCH(exact!.toString())} · Rundungsdifferenz {formatCH(roundingDiff.toString())}
+                </span>
+              )}
+            </span>
           </CardHeader>
           <div className="overflow-x-auto">
             <div className="min-w-[68rem] text-sm">
@@ -109,7 +125,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               <TBody>
                 {o.invoices.map((i) => (
                   <TR key={i.id}>
-                    <TD className="font-medium">{i.invoiceNumber ?? <Badge tone="critical">fehlt</Badge>}</TD>
+                    <TD className="font-medium">{i.invoiceNumber ?? <Badge tone="critical">fehlt</Badge>}{i.reviewStatus === "NEEDS_REVIEW" && <Badge tone="warning" className="ml-2">zu prüfen</Badge>}</TD>
                     <TD>{i.supplierName ?? "–"}</TD>
                     <TD>{formatDate(i.invoiceDate)}</TD>
                     <TD className="num">{i.totalAmount ? `${i.currency} ${formatCH(i.totalAmount.toString())}` : "–"}</TD>

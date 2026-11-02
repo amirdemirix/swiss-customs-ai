@@ -26,6 +26,7 @@ export async function recomputeOrder(db: TenantDb, orderId: string, userId: stri
     totalAmount: str(inv.totalAmount),
     headerAdjustments: inv.discountAmount ? inv.discountAmount.negated().toString() : null,
     documentSha256: inv.document?.sha256 ?? null,
+    documentId: inv.documentId,
     lines: inv.lines.map<LineInput>((l) => ({
       id: l.id, invoiceId: inv.id, invoiceNumber: inv.invoiceNumber, lineNo: l.lineNo, articleNumber: l.articleNumber,
       description: l.description, tariffNumber: l.tariffNumber, statisticalKey: l.statisticalKey, originCountry: l.originCountry,
@@ -38,12 +39,22 @@ export async function recomputeOrder(db: TenantDb, orderId: string, userId: stri
   const rates = order.exchangeRates.map((r) => ({ id: r.id, fromCurrency: r.fromCurrency, toCurrency: r.toCurrency, rate: r.rate.toString(), validOn: r.validOn.toISOString().slice(0, 10), source: r.source }));
   const issues = validateOrder(invoices, order.declarationCurrency);
   const result = consolidate(invoices.flatMap((i) => i.lines), profile, order.declarationCurrency, rates);
+  // Fehlende Umrechnungskurse als kritischer Befund (einmal je Währungspaar)
+  const missingRates = new Map<string, number>();
+  for (const g of result.groups) for (const p of g.problems) if (p.code === "MISSING_EXCHANGE_RATE") missingRates.set(`${p.from}>${p.to}`, (missingRates.get(`${p.from}>${p.to}`) ?? 0) + p.lineIds.length);
+  for (const [k, n] of missingRates) {
+    const [from, to] = k.split(">");
+    issues.push({ code: "EXCHANGE_RATE_MISSING", severity: "CRITICAL", entityType: "Invoice", entityId: orderId, field: "currency",
+      message: `Kein Umrechnungskurs ${from} → ${to} hinterlegt (${n} Positionen ohne Wert in ${to}). Bitte Kurs mit Quelle und Datum erfassen.` });
+  }
 
   const hasCritical = issues.some((i) => i.severity === "CRITICAL") || result.groups.some((g) => g.totalValue === null);
   const status = order.status === "DRAFT" || order.status === "PROCESSING" || order.status === "NEEDS_REVIEW" || order.status === "READY" ? (hasCritical ? "NEEDS_REVIEW" : "READY") : order.status;
 
   // Interaktive Transaktion über den Mandanten-Client
   await db.$transaction(async (tx) => {
+    // Serialisiert parallele Neuberechnungen desselben Auftrags (z. B. mehrere Uploads gleichzeitig)
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orderId}))`;
     await tx.declarationLine.deleteMany({ where: { orderId } });
     await tx.validationIssue.deleteMany({ where: { orderId, resolvedAt: null } });
     for (const g of result.groups) {
@@ -54,7 +65,7 @@ export async function recomputeOrder(db: TenantDb, orderId: string, userId: stri
           preferenceStatus: (g.keys.preferenceStatus as "NONE" | "CLAIMED" | "UNKNOWN" | null) ?? "UNKNOWN", customsProcedure: g.keys.customsProcedure ?? null,
           description: g.description, totalValue: g.totalValue ?? "0", currency: g.currency, totalQuantity: g.totalQuantity, quantityUnit: g.quantityUnit,
           netWeightKg: g.netWeightKg, grossWeightKg: g.grossWeightKg,
-          attributes: { mergeable: g.mergeable, problems: g.problems, valueComplete: g.totalValue !== null, knownNetWeightKg: g.knownNetWeightKg, knownGrossWeightKg: g.knownGrossWeightKg, extra: g.keys.extra },
+          attributes: { mergeable: g.mergeable, problems: g.problems, valueComplete: g.totalValue !== null, valueExact: g.totalValueExact, knownNetWeightKg: g.knownNetWeightKg, knownGrossWeightKg: g.knownGrossWeightKg, extra: g.keys.extra },
           sources: { create: g.members.map((m) => ({ invoiceLineId: m.lineId, convertedValue: m.convertedValue ?? "0", exchangeRateId: m.exchangeRate?.id ?? null })) },
         },
       });

@@ -35,12 +35,19 @@ describe("Prüfregeln", () => {
     expect(codes(validateInvoice(inv({ lines: [l({ grossWeightKg: null })] })))).toContain("GROSS_WEIGHT_MISSING");
   });
   it("erkennt doppelte Rechnungen (Datei und Nummer)", () => {
-    const a = inv({ id: "I1", documentSha256: "h1" });
-    const b = inv({ id: "I2", documentSha256: "h1", lines: [l({ id: "L2", invoiceId: "I2" })] });
+    const a = inv({ id: "I1", documentSha256: "h1", documentId: "D1" });
+    const b = inv({ id: "I2", documentSha256: "h1", documentId: "D2", lines: [l({ id: "L2", invoiceId: "I2" })] });
     const c = inv({ id: "I3", invoiceNumber: "r-100 ", supplierName: "muster ag", lines: [l({ id: "L3", invoiceId: "I3" })] });
     const r = codes(validateOrder([a, b, c], "CHF"));
     expect(r).toContain("DUPLICATE_FILE");
     expect(r.filter((x) => x === "DUPLICATE_INVOICE")).toHaveLength(2);
+  });
+  it("mehrere Rechnungen aus derselben Datei sind kein Datei-Duplikat", () => {
+    const a = inv({ id: "I1", documentSha256: "h1", documentId: "D1" });
+    const b = inv({ id: "I2", invoiceNumber: "R-200", documentSha256: "h1", documentId: "D1", lines: [l({ id: "L2", invoiceId: "I2" })] });
+    expect(codes(validateOrder([a, b], "CHF"))).not.toContain("DUPLICATE_FILE");
+    const c = inv({ id: "I3", invoiceNumber: "R-300", documentSha256: "h1", documentId: "D2", lines: [l({ id: "L3", invoiceId: "I3" })] });
+    expect(codes(validateOrder([a, b, c], "CHF")).filter((x) => x === "DUPLICATE_FILE")).toHaveLength(1);
   });
   it("erkennt Widersprüche je Artikelnummer", () => {
     const r = codes(validateOrder([

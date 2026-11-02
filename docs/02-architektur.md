@@ -71,3 +71,19 @@ BAZG-Schnittstellendokumentation und Tests in der Abnahmeumgebung.
 - Rollenmatrix: `src/server/auth/permissions.ts` (getestet). Seiten: `requireCan` → Hinweisseite; Actions: `assertCan`.
 - Fachliche Ablehnungen (z. B. letzter Admin, offene kritische Befunde) werden als Rückgabewert inline angezeigt.
 - Audit: LOGIN, LOGIN_FAILED, CREATE/UPDATE (feldgenau)/DELETE, STATUS, ROLE_CHANGED, MEMBER_ADDED/REMOVED, AI_CONSENT_*, PASSWORD_CHANGED.
+
+## Belege & Import (Phase 4)
+
+- **Upload:** eine Datei pro Anfrage (Client lädt bis zu 3 parallel, Fortschritt je Datei), max. 4 MB
+  (Vercel-Limit 4.5 MB/Anfrage; grössere Scans später per Direkt-Upload in Objektspeicher).
+- **Typprüfung:** Magic Bytes statt Dateiendung/MIME; erlaubt PDF, PNG, JPEG, XLSX (nur .xlsx, keine Makros), CSV.
+  Ausgeliefert wird mit dem geprüften Typ + `nosniff`; Nicht-PDFs zusätzlich mit Sandbox-CSP.
+- **Ablage:** AES-256-GCM, 12-Byte-Zufalls-IV je Datei, AAD = Mandant:Dokument (Chiffrat ist an Mandant gebunden),
+  `keyId` für Rotation. Speicherort vorerst PostgreSQL (`StoredFile`, bytea) → keine Zusatzinfrastruktur;
+  Adapter für S3-kompatiblen CH-Speicher folgt bei grösseren Volumen.
+- **Duplikate:** SHA-256 je Mandant – gleiche Datei im selben Auftrag wird abgewiesen, in anderem Auftrag markiert.
+- **PDF:** nur Textlayer (unpdf), keine KI. Kopfdaten (Nr., Datum, Währung, Total) als Vorschlag mit Seite + Textausschnitt,
+  Rechnung im Status „zu prüfen“. Scans/Bilder warten auf OCR/KI (Phase 5, nur mit KI-Freigabe).
+- **Excel/CSV:** Trennzeichen- und Kopfzeilenerkennung, Synonym-Zuordnung DE/EN/FR/IT, Dezimal-Konvention je Datei,
+  Summenzeilen werden erkannt (Total übernommen, nicht berechnet). Jede Position speichert Blatt + Zeilennummer + Rohwerte.
+- **Rundung:** Positionen einzeln auf 0.01; Total = Summe der Positionen; Differenz zum exakten Total wird angezeigt (Frage F10).

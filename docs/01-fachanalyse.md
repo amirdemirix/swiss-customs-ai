@@ -58,4 +58,5 @@ Konsolidierung — nicht in der KI an sich.** Die KI ist nur ein Erfassungshilfs
 | F6 | Müssen Zusatzmengen (z. B. Stück, Liter, Paar) pro Tarifnummer ausgewiesen werden, und sollen diese aus den Rechnungsmengen übernommen werden? |
 | F7 | Ist ein Export-Fall (Ausfuhr) in der ersten Version erforderlich, oder zunächst nur Einfuhr? |
 | F8 | Aufbewahrungsfrist der Originalbelege im System (gesetzlich i. d. R. 10 Jahre für Geschäftsbücher/Belege — mit Ihrem Rechtsdienst zu klären) und ob das System Archivsystem ist oder nur Arbeitsplattform. |
+| F10 | Rundung: Jede Anmeldeposition wird einzeln kaufmännisch auf 0.01 gerundet; das Total ist die Summe der gerundeten Positionen (Differenz zum exakten Total wird angezeigt). Entspricht das Ihrer Praxis, oder soll die Differenz auf eine Position verteilt werden? |
 | F9 | Welcher KI-Hosting-Standort ist für Ihre Kunden akzeptabel (Anthropic API direkt, oder über einen Cloud-Anbieter mit Region EU/CH)? |

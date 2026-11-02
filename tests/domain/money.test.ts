@@ -47,3 +47,19 @@ describe("Währungsumrechnung", () => {
     expect(dec("0.015").toFixed(3)).toBe("0.015");
   });
 });
+
+describe("Dezimal-Konvention je Datei", () => {
+  it("erkennt Komma- bzw. Punkt-Konvention aus eindeutigen Werten", async () => {
+    const { inferDecimalSeparator } = await import("@/domain");
+    expect(inferDecimalSeparator(["2,50", "37,000", "1.234,50"])).toBe(",");
+    expect(inferDecimalSeparator(["2.50", "1,234.50", "37.000"])).toBe(".");
+    expect(inferDecimalSeparator(["2,50", "2.50"])).toBeNull();
+    expect(inferDecimalSeparator(["37,000", "100"])).toBeNull();
+  });
+  it("löst mehrdeutige Werte nur mit bekannter Konvention auf", () => {
+    expect(parseAmount("37,000")).toBeNull();
+    expect(parseAmount("37,000", ",")!.toString()).toBe("37");
+    expect(parseAmount("37,000", ".")!.toString()).toBe("37000");
+    expect(parseAmount("1.234", ",")!.toString()).toBe("1234");
+  });
+});

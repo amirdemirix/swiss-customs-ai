@@ -44,6 +44,8 @@ model Tenant {
   exports          ExportFile[]
   declarationLines DeclarationLine[]
   issues           ValidationIssue[]
+  storedFiles      StoredFile[]
+  columnMappings   ColumnMapping[]
 }
 
 model User {
@@ -111,6 +113,7 @@ model Customer {
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders CustomsOrder[]
   articles ArticleMaster[]
+  columnMappings ColumnMapping[]
 
   @@unique([tenantId, number])
   @@index([tenantId, name])
@@ -230,8 +233,13 @@ model Document {
   mimeType      String
   sizeBytes     Int
   sha256        String         @db.Char(64)
-  storageKey    String         // verschlüsselt abgelegt
+  /// "db:<StoredFile.id>" (verschlüsselt in Postgres) – später "s3:<key>"
+  storageKey    String
   encryptionIv  String?
+  /// Extrahierter Text je Seite (PDF-Textlayer) bzw. Tabellenvorschau – Grundlage für KI/Kontrolle
+  extractedText Json?
+  /// Heuristisch erkannte Kopfdaten (Vorschläge, nicht bestätigt) inkl. Fundstelle
+  detectedHeader Json?
   kind          DocumentKind   @default(UNKNOWN)
   status        DocumentStatus @default(UPLOADED)
   pageCount     Int?
@@ -245,9 +253,45 @@ model Document {
   order    CustomsOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   invoices Invoice[]
   jobs     ProcessingJob[]
+  file     StoredFile?
 
   @@index([tenantId, sha256])
   @@index([orderId])
+}
+
+/// Verschlüsselte Belegablage (AES-256-GCM). Klartext wird nie gespeichert.
+model StoredFile {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String   @unique
+  keyId      String   @default("v1") // für Schlüsselrotation
+  iv         String
+  authTag    String
+  ciphertext Bytes
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+/// Gespeicherte Spaltenzuordnung für Excel/CSV-Importe (je Kunde wiederverwendbar)
+model ColumnMapping {
+  id              String   @id @default(cuid())
+  tenantId        String
+  customerId      String?
+  name            String
+  /// Normalisierte Kopfzeile, um passende Zuordnungen automatisch zu finden
+  headerSignature String
+  /// Zielfeld → Spaltenname
+  mapping         Json
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, headerSignature, customerId])
 }
 
 enum JobType {

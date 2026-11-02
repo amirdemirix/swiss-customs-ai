@@ -1,0 +1,6 @@
+﻿Rechnung Nr;Datum;Lieferant;Währung;Pos;Artikel-Nr;Bezeichnung;Zolltarifnummer;Ursprungsland;Menge;Einheit;Einzelpreis;Betrag;Nettogewicht;Bruttogewicht
+RE-2026-1001;15.10.2026;Muster Textil GmbH;EUR;1;TS-100;T-Shirt Baumwolle, gestrickt;6109.1000;CN;200;PCE;2,50;500,00;37,000;40,200
+RE-2026-1001;15.10.2026;Muster Textil GmbH;EUR;2;TS-200;T-Shirt Baumwolle, gestrickt;6109.1000;TR;250;PCE;2,80;700,00;46,250;50,100
+RE-2026-1001;15.10.2026;Muster Textil GmbH;EUR;3;PO-300;Polo-Shirt Baumwolle;6105.1000;BD;100;PCE;6,20;620,00;25,000;27,300
+RE-2026-1002;16.10.2026;Muster Textil GmbH;EUR;1;TS-100;T-Shirt Baumwolle, gestrickt;6109.1000;CN;360;PCE;2,50;900,00;66,600;71,900
+RE-2026-1002;16.10.2026;Muster Textil GmbH;EUR;2;SO-400;Socken Baumwolle;6115.9500;PT;500;PAA;2,30;1'150,00;;
