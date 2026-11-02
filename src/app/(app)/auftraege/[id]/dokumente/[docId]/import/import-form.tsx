@@ -69,7 +69,7 @@ export function ImportForm({ orderId, documentId, sheets, initialDefaults }: { o
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>2. Spalten zuordnen</CardTitle><span className="text-xs text-muted-foreground">Automatisch vorgeschlagen – bitte prüfen</span></CardHeader>
+        <CardHeader><CardTitle>2. Spalten zuordnen</CardTitle><span className="text-xs text-muted-foreground">Automatisch vorgeschlagen – bitte prüfen · eine Spalte „Netto/Brutto“ darf beiden Gewichten zugeordnet werden (Werte „netto / brutto“)</span></CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {(Object.keys(IMPORT_FIELDS) as ImportField[]).map((f) => (
             <label key={f} className="space-y-1 text-xs font-medium text-muted-foreground">
@@ -77,7 +77,7 @@ export function ImportForm({ orderId, documentId, sheets, initialDefaults }: { o
               <select name={`map.${f}`} className={sel} value={map[f] ?? ""}
                 onChange={(e) => setMap((m) => { const n = { ...m }; if (e.target.value === "") delete n[f]; else n[f] = Number(e.target.value); return n; })}>
                 <option value="">– nicht vorhanden –</option>
-                {headers.map((h, i) => <option key={i} value={i} disabled={used.has(i) && used.get(i) !== f}>{h || `Spalte ${i + 1}`}</option>)}
+                {headers.map((h, i) => <option key={i} value={i} disabled={used.has(i) && used.get(i) !== f && !((f === "netWeightKg" || f === "grossWeightKg") && (used.get(i) === "netWeightKg" || used.get(i) === "grossWeightKg"))}>{h || `Spalte ${i + 1}`}</option>)}
               </select>
             </label>
           ))}

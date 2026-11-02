@@ -40,7 +40,8 @@ export async function runImport(orderId: string, documentId: string, _p: ImportS
     const v = fd.get(`map.${f}`);
     if (typeof v === "string" && v !== "" && /^\d{1,3}$/.test(v)) map[f] = Number(v);
   }
-  const cols = Object.values(map);
+  // Einzige erlaubte Doppelbelegung: kombinierte Gewichtsspalte (netto / brutto)
+  const cols = Object.entries(map).filter(([f]) => !(f === "grossWeightKg" && map.grossWeightKg === map.netWeightKg)).map(([, i]) => i);
   if (new Set(cols).size !== cols.length) return { error: "Eine Spalte ist mehreren Feldern zugeordnet." };
   if (map.lineAmount === undefined && map.unitPrice === undefined) return { error: "Bitte mindestens Positionswert oder Einzelpreis zuordnen." };
   const str = (k: string) => { const v = String(fd.get(k) ?? "").trim(); return v || null; };

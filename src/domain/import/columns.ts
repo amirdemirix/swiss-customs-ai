@@ -33,10 +33,16 @@ export const headerSignature = (headers: string[]) => headers.map(normHeader).jo
  * Ordnet Spalten anhand von Synonymen zu. Exakte Treffer haben Vorrang vor Teiltreffern;
  * jede Spalte wird höchstens einem Feld zugeordnet. Unklare Spalten bleiben unzugeordnet.
  */
+/** Kombinierte Gewichtsspalte, z. B. „Netto/Brutto kg“, „N/B kg“, „Net/Gross weight“, „NW/GW“. */
+export const COMBINED_WEIGHT = /^(netto ?brutto|net ?gross|n ?b|nw ?gw|gewicht netto ?brutto|net ?gross weight|weight net ?gross)( gewicht| weight)?$/;
+
 export function autoMapColumns(headers: string[]): ColumnMap {
   const normalized = headers.map(normHeader);
   const map: ColumnMap = {};
   const used = new Set<number>();
+  // Eine Spalte mit beiden Gewichten → beiden Feldern zuordnen (Werte „netto / brutto“)
+  const combined = normalized.findIndex((h) => COMBINED_WEIGHT.test(h));
+  if (combined >= 0) { map.netWeightKg = combined; map.grossWeightKg = combined; used.add(combined); }
   const fields = Object.keys(IMPORT_FIELDS) as ImportField[];
   for (const pass of ["exact", "prefix"] as const) {
     for (const f of fields) {

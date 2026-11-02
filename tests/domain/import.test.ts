@@ -151,3 +151,24 @@ describe("Summenzeile ohne Rechnungsnummer", () => {
     expect(r.problems.map((p) => p.message).join()).not.toContain("Keine Rechnungsnummer");
   });
 });
+
+describe("Kombinierte Gewichtsspalte", () => {
+  it("erkennt „Netto/Brutto kg“ und teilt „netto / brutto“ auf", () => {
+    const headers = ["Artikel", "Tarif-Nr.", "Betrag EUR", "Netto/Brutto kg"];
+    const map = autoMapColumns(headers);
+    expect(map.netWeightKg).toBe(3);
+    expect(map.grossWeightKg).toBe(3);
+    const r = rowsToInvoices([["A", "6109.1000", "840.00", "54.000 / 58.500"], ["B", "6110.2000", "1'740.00", "60.000 / 64.800"]], map, { invoiceNumber: "R" });
+    expect(r.invoices[0].lines.map((l) => [l.netWeightKg, l.grossWeightKg])).toEqual([["54", "58.5"], ["60", "64.8"]]);
+    expect(r.problems).toEqual([]);
+  });
+  it.each(["N/B kg", "Net/Gross Weight", "NW/GW"])("erkennt Kopfzeile „%s“", (h) => {
+    const m = autoMapColumns(["Description", "Amount", h]);
+    expect([m.netWeightKg, m.grossWeightKg]).toEqual([2, 2]);
+  });
+  it("unklare Angabe → leer + Hinweis, nichts geraten", () => {
+    const r = rowsToInvoices([["A", "10", "54 kg"]], { articleNumber: 0, lineAmount: 1, netWeightKg: 2, grossWeightKg: 2 }, { invoiceNumber: "R" });
+    expect(r.invoices[0].lines[0].netWeightKg).toBeNull();
+    expect(r.problems.some((p) => p.message.includes("netto / brutto"))).toBe(true);
+  });
+});

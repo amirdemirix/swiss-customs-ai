@@ -92,7 +92,7 @@ export function rowsToInvoices(dataRows: string[][], map: ColumnMap, defaults: I
   let lastInv: InvoiceDraft | undefined;
   const get = (r: string[], f: ImportField) => (map[f] === undefined ? null : clean(r[map[f]!]));
   const NUMERIC: ImportField[] = ["quantity", "unitPrice", "lineAmount", "netWeightKg", "grossWeightKg"];
-  const decimalHint = inferDecimalSeparator(dataRows.flatMap((r) => NUMERIC.map((f) => get(r, f))));
+  const decimalHint = inferDecimalSeparator(dataRows.flatMap((r) => NUMERIC.flatMap((f) => (get(r, f) ?? "").split(/\s*[/|]\s*/))));
 
   dataRows.forEach((r, idx) => {
     const rowNo = firstRowNumber + idx;
@@ -146,7 +146,13 @@ export function rowsToInvoices(dataRows: string[][], map: ColumnMap, defaults: I
 
     lastInv = inv;
     const num = (f: ImportField) => {
-      const v = get(r, f);
+      let v = get(r, f);
+      // Kombinierte Gewichtsspalte „netto / brutto“: erster Wert = netto, zweiter = brutto
+      if (v && (f === "netWeightKg" || f === "grossWeightKg") && map.netWeightKg !== undefined && map.netWeightKg === map.grossWeightKg) {
+        const parts = v.split(/\s*[/|]\s*/).map((x) => x.replace(/\s*kg\s*$/i, "").trim()).filter(Boolean);
+        if (parts.length !== 2) { problems.push({ row: rowNo, field: f, severity: "WARNING", message: `Gewichtsangabe „${v}“ ist nicht im Format „netto / brutto“ – leer übernommen.` }); return null; }
+        v = f === "netWeightKg" ? parts[0] : parts[1];
+      }
       if (v === null) return null;
       const p = parseAmount(v, decimalHint);
       if (!p) { problems.push({ row: rowNo, field: f, severity: "WARNING", message: `Wert „${v}“ in Spalte ${fieldLabel(f)} nicht lesbar – leer übernommen.` }); return null; }
