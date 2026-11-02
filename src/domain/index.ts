@@ -16,3 +16,4 @@ export * from "./import/columns";
 export * from "./import/rows-to-invoices";
 export * from "./extraction/map";
 export * from "./invoice/edit";
+export * from "./tariff/dataset";

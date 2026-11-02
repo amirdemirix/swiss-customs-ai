@@ -20,10 +20,12 @@ function Field({ label, name, err, children, required }: { label: string; name: 
 export interface OrderDefaults {
   orderNumber?: string; customerId?: string | null; direction?: string; consignor?: string | null; consignee?: string | null;
   dispatchCountry?: string | null; destinationCountry?: string | null; transportMode?: string | null; reference?: string | null; orderDate?: string; remarks?: string | null;
+  groupingProfileId?: string | null;
 }
 
-export function OrderForm({ customers, action: submit, defaults, submitLabel }: {
+export function OrderForm({ customers, profiles = [], action: submit, defaults, submitLabel }: {
   customers: { id: string; name: string }[];
+  profiles?: { id: string; name: string; isDefault: boolean }[];
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   defaults: OrderDefaults;
   submitLabel: string;
@@ -54,6 +56,11 @@ export function OrderForm({ customers, action: submit, defaults, submitLabel }: 
           <Field label="Bestimmungsland (ISO)" name="destinationCountry" err={e.destinationCountry}><Input id="destinationCountry" name="destinationCountry" maxLength={2} defaultValue={v(defaults.destinationCountry)} /></Field>
           <Field label="Referenznummer" name="reference" err={e.reference}><Input id="reference" name="reference" defaultValue={v(defaults.reference)} /></Field>
           <Field label="Datum" name="orderDate" err={e.orderDate} required><Input id="orderDate" name="orderDate" type="date" defaultValue={defaults.orderDate} /></Field>
+          <Field label="Gruppierungsprofil" name="groupingProfileId" err={e.groupingProfileId}>
+            <select id="groupingProfileId" name="groupingProfileId" className={select} key={`g-${defaults.groupingProfileId}`} defaultValue={v(defaults.groupingProfileId)}>
+              <option value="">Standardprofil</option>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? " (Standard)" : ""}</option>)}
+            </select>
+          </Field>
           <div className="md:col-span-2"><Field label="Bemerkungen" name="remarks" err={e.remarks}><textarea id="remarks" name="remarks" rows={2} className={`${select} h-auto py-2`} defaultValue={v(defaults.remarks)} /></Field></div>
         </CardContent>
         <div className="flex justify-end gap-2 border-t px-5 py-3"><Button type="submit" disabled={pending}>{pending ? "Speichern …" : submitLabel}</Button></div>

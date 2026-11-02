@@ -4,6 +4,7 @@ import { parseTariffNumber } from "../tariff/tariff-number";
 import { isCountryCode } from "../tariff/country";
 import type { LineInput } from "../types";
 import type { DecInput } from "../money/decimal";
+import type { TariffLookup } from "../tariff/dataset";
 
 export type Severity = "CRITICAL" | "WARNING" | "INFO";
 
@@ -115,8 +116,22 @@ export function validateInvoice(inv: InvoiceInput, o: ValidationOptions = {}): I
 }
 
 /** Auftragsübergreifende Prüfungen: Duplikate, Widersprüche je Artikelnummer, Währungsmix. */
-export function validateOrder(invoices: InvoiceInput[], declarationCurrency: string, o: ValidationOptions = {}): Issue[] {
+export function validateOrder(invoices: InvoiceInput[], declarationCurrency: string, o: ValidationOptions = {}, tariffs?: TariffLookup | null): Issue[] {
   const out: Issue[] = invoices.flatMap((i) => validateInvoice(i, o));
+
+  // Abgleich mit importiertem Tarif-Datenstand (nur wenn vorhanden – sonst keine Aussage)
+  if (tariffs) {
+    for (const inv of invoices) for (const l of inv.lines) {
+      const t = parseTariffNumber(l.tariffNumber);
+      if (!t.ok) continue;
+      const keys = tariffs.known.get(t.normalized);
+      if (!keys) out.push({ code: "TARIFF_UNKNOWN", severity: "WARNING", entityType: "InvoiceLine", entityId: l.id, field: "tariffNumber",
+        message: `${lineLabel(inv, l)}: Tarifnummer ${t.normalized} ist im Datenstand „${tariffs.name}“ (gültig ab ${tariffs.validFrom}) nicht enthalten.` });
+      else if (l.statisticalKey && keys.size && !keys.has(l.statisticalKey) && ![...keys].every((k) => k === null))
+        out.push({ code: "STAT_KEY_UNKNOWN", severity: "WARNING", entityType: "InvoiceLine", entityId: l.id, field: "statisticalKey",
+          message: `${lineLabel(inv, l)}: Schlüssel ${l.statisticalKey} zu ${t.normalized} ist im Datenstand nicht enthalten (bekannt: ${[...keys].filter(Boolean).join(", ")}).` });
+    }
+  }
 
   // Duplikate: gleicher Dateihash oder gleicher Lieferant + Rechnungsnummer
   const seenHash = new Map<string, InvoiceInput>(); // sha256 → erste Rechnung eines ANDEREN Dokuments

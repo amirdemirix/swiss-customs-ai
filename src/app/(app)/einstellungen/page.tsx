@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
 import { ActionForm } from "@/components/action-form";
 import { TenantForm, AddUserForm, PasswordForm } from "./forms";
+import { ProfilesCard } from "./profiles-card";
 import { saveTenantSettings, setAiConsent, addUser, changeRole, removeMember, changeOwnPassword } from "./actions";
 
 const ROLES = ["ADMIN", "DECLARANT", "REVIEWER", "READ_ONLY"] as const;
@@ -93,22 +94,7 @@ export default async function Settings() {
               </Table>
             </Card>
 
-            <Card>
-              <CardHeader><CardTitle>Gruppierungsprofile</CardTitle><Badge tone="info">Bearbeitung ab Phase 6</Badge></CardHeader>
-              <Table>
-                <THead><TR><TH>Name</TH><TH>Trennmerkmale</TH><TH>Pflichtmerkmale</TH><TH /></TR></THead>
-                <TBody>
-                  {profiles.map((p) => (
-                    <TR key={p.id}>
-                      <TD className="font-medium">{p.name}</TD>
-                      <TD className="whitespace-normal font-mono text-xs">{[...p.keyFields, ...p.extraKeys.map((k) => `extra.${k}`)].join(", ")}</TD>
-                      <TD className="font-mono text-xs">{p.requiredFields.join(", ")}</TD>
-                      <TD>{p.isDefault && <Badge tone="primary">Standard</Badge>}</TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            </Card>
+            <ProfilesCard profiles={profiles} />
           </>
         )}
 

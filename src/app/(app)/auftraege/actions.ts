@@ -10,13 +10,14 @@ import { canTransition, diffFields, isLocked, type OrderStatus } from "@/domain"
 
 export type FormState = { errors?: Record<string, string[] | undefined>; message?: string; values?: Record<string, string> };
 
-const ORDER_FIELDS = ["orderNumber", "customerId", "direction", "consignor", "consignee", "dispatchCountry", "destinationCountry", "transportMode", "reference", "orderDate", "remarks"] as const;
+const ORDER_FIELDS = ["groupingProfileId", "orderNumber", "customerId", "direction", "consignor", "consignee", "dispatchCountry", "destinationCountry", "transportMode", "reference", "orderDate", "remarks"] as const;
 
 function normalizeOrder(d: ReturnType<typeof orderSchema.parse>) {
   return {
     ...d,
     customerId: d.customerId ?? null, consignor: d.consignor ?? null, consignee: d.consignee ?? null, dispatchCountry: d.dispatchCountry ?? null,
     destinationCountry: d.destinationCountry ?? null, transportMode: d.transportMode ?? null, reference: d.reference ?? null, remarks: d.remarks || null,
+    groupingProfileId: d.groupingProfileId ?? null,
     orderDate: new Date(d.orderDate),
   };
 }
@@ -29,8 +30,9 @@ export async function createOrder(_prev: FormState, fd: FormData): Promise<FormS
   const d = normalizeOrder(parsed.data);
   if (await ctx.db.customsOrder.findFirst({ where: { orderNumber: d.orderNumber } })) return { errors: { orderNumber: ["Auftragsnummer existiert bereits"] }, values: formValues(fd) };
   if (d.customerId && !(await ctx.db.customer.findFirst({ where: { id: d.customerId } }))) return { errors: { customerId: ["Unbekannter Kunde"] }, values: formValues(fd) };
-  const profile = await ctx.db.groupingProfile.findFirst({ where: { isDefault: true } });
-  const order = await ctx.db.customsOrder.create({ data: { ...d, tenantId: ctx.tenantId, createdById: ctx.userId, groupingProfileId: profile?.id } });
+  if (d.groupingProfileId && !(await ctx.db.groupingProfile.findFirst({ where: { id: d.groupingProfileId } }))) return { errors: { groupingProfileId: ["Unbekanntes Profil"] }, values: formValues(fd) };
+  const profile = d.groupingProfileId ? null : await ctx.db.groupingProfile.findFirst({ where: { isDefault: true } });
+  const order = await ctx.db.customsOrder.create({ data: { ...d, tenantId: ctx.tenantId, createdById: ctx.userId, groupingProfileId: d.groupingProfileId ?? profile?.id ?? null } });
   await audit(ctx, { action: "CREATE", entityType: "CustomsOrder", entityId: order.id, newValue: parsed.data });
   redirect(`/auftraege/${order.id}`);
 }
@@ -47,6 +49,7 @@ export async function updateOrder(orderId: string, _prev: FormState, fd: FormDat
   if (d.orderNumber !== before.orderNumber && (await ctx.db.customsOrder.findFirst({ where: { orderNumber: d.orderNumber } })))
     return { errors: { orderNumber: ["Auftragsnummer existiert bereits"] }, values: formValues(fd) };
   if (d.customerId && !(await ctx.db.customer.findFirst({ where: { id: d.customerId } }))) return { errors: { customerId: ["Unbekannter Kunde"] }, values: formValues(fd) };
+  if (d.groupingProfileId && !(await ctx.db.groupingProfile.findFirst({ where: { id: d.groupingProfileId } }))) return { errors: { groupingProfileId: ["Unbekanntes Profil"] }, values: formValues(fd) };
   const changes = diffFields(before as unknown as Record<string, unknown>, d, [...ORDER_FIELDS]);
   if (changes.length) {
     await ctx.db.$transaction([
@@ -54,6 +57,8 @@ export async function updateOrder(orderId: string, _prev: FormState, fd: FormDat
       ...changes.map((c) => ctx.db.auditLog.create({ data: { tenantId: ctx.tenantId, userId: ctx.userId, action: "UPDATE", entityType: "CustomsOrder", entityId: orderId,
         field: c.field, oldValue: c.oldValue as never, newValue: c.newValue as never } })),
     ]);
+    // Neues Gruppierungsprofil → sofort neu gruppieren (nach dem Speichern)
+    if (changes.some((c) => c.field === "groupingProfileId")) await recomputeOrder(ctx.db, orderId, ctx.userId);
   }
   redirect(`/auftraege/${orderId}`);
 }

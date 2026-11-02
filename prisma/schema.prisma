@@ -46,6 +46,8 @@ model Tenant {
   issues           ValidationIssue[]
   storedFiles      StoredFile[]
   columnMappings   ColumnMapping[]
+  tariffDatasets   TariffDataset[]
+  tariffEntries    TariffEntry[]
 }
 
 model User {
@@ -580,4 +582,50 @@ model ExportFile {
   order  CustomsOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, orderId])
+}
+
+// ───────────── Tarifdaten (Phase 6) ─────────────
+
+/// Importierter Datenstand (z. B. Export aus dem offiziellen Tares). Nur ein Datenstand ist aktiv.
+model TariffDataset {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  source      String   // Herkunft, z. B. "Tares-Export BAZG"
+  validFrom   DateTime @db.Date
+  isActive    Boolean  @default(false)
+  entryCount  Int      @default(0)
+  importedById String
+  createdAt   DateTime @default(now())
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries TariffEntry[]
+
+  @@index([tenantId, isActive])
+}
+
+model TariffEntry {
+  id             String  @id @default(cuid())
+  tenantId       String
+  datasetId      String
+  tariffNumber   String  @db.VarChar(9)
+  statisticalKey String? @db.VarChar(3)
+  description    String
+  unit           String? // Zusatzmengeneinheit, falls im Datenstand angegeben
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dataset TariffDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, datasetId, tariffNumber])
+}
+
+// ───────────── Sicherheit (Phase 8) ─────────────
+
+/// Fehlgeschlagene Anmeldeversuche – instanzübergreifendes Rate-Limit (kein Mandantenbezug)
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  key       String   // sha256(email|ip)
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
 }

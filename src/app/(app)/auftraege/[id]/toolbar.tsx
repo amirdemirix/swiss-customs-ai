@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { FileJson, FileSpreadsheet, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import type { OrderStatus, Role } from "@prisma/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,13 @@ export function OrderToolbar({ order, role, criticalOpen }: { order: { id: strin
         <>
           <Link href={`/auftraege/${order.id}/bearbeiten`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil />Bearbeiten</Link>
           <ActionForm action={recompute.bind(null, order.id)}><Button variant="outline" size="sm"><RefreshCw />Neu prüfen &amp; gruppieren</Button></ActionForm>
+        </>
+      )}
+      {can(role, "export.create") && (
+        <>
+          <a href={`/api/orders/${order.id}/export?format=xlsx`} className={buttonVariants({ variant: "outline", size: "sm" })} title="Zollübersicht, Rechnungsdetails, Rechnungsübersicht, Prüfprotokoll"><FileSpreadsheet />Excel</a>
+          <a href={`/api/orders/${order.id}/export?format=json`} className={buttonVariants({ variant: "outline", size: "sm" })}
+            title={criticalOpen ? "Erst ohne kritische Befunde und mit bestätigten Rechnungen möglich" : "Strukturierter Datensatz für die Weiterverarbeitung (keine Passar-Übermittlung)"}><FileJson />Anmeldevorbereitung</a>
         </>
       )}
       {write && manualTargets(order.status).map((to) => {

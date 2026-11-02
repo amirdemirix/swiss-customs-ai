@@ -5,7 +5,7 @@ import { prismaRoot } from "./db";
 export const TENANT_SCOPED_MODELS = [
   "Membership", "Customer", "ArticleMaster", "CustomsOrder", "Document", "ProcessingJob", "Invoice",
   "InvoiceLine", "GroupingProfile", "ExchangeRate", "DeclarationLine", "ValidationIssue", "AuditLog", "ExportFile",
-  "StoredFile", "ColumnMapping",
+  "StoredFile", "ColumnMapping", "TariffDataset", "TariffEntry",
 ] as const;
 /** Bewusst ausgenommen: Session wird von der Authentifizierung gelesen, bevor der Mandant bekannt ist. */
 export const TENANT_GUARD_EXEMPT = ["Session"] as const;

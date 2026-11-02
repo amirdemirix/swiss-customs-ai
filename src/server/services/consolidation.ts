@@ -1,5 +1,18 @@
-import { consolidate, validateOrder, DEFAULT_PROFILE, type GroupingProfileConfig, type GroupableField, type InvoiceInput, type LineInput } from "@/domain";
+import { consolidate, validateOrder, parseTariffNumber, DEFAULT_PROFILE, type TariffLookup, type GroupingProfileConfig, type GroupableField, type InvoiceInput, type LineInput } from "@/domain";
+import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import type { TenantDb } from "../tenant-db";
+
+/** Lädt aus dem aktiven Tarif-Datenstand nur die im Auftrag verwendeten Nummern. */
+async function loadTariffLookup(db: TenantDb, invoices: InvoiceInput[]): Promise<TariffLookup | null> {
+  const ds = await db.tariffDataset.findFirst({ where: { isActive: true } });
+  if (!ds) return null;
+  const nums = [...new Set(invoices.flatMap((i) => i.lines.map((l) => parseTariffNumber(l.tariffNumber))).filter((t) => t.ok).map((t) => (t as { normalized: string }).normalized))];
+  const rows = nums.length ? await db.tariffEntry.findMany({ where: { datasetId: ds.id, tariffNumber: { in: nums } }, select: { tariffNumber: true, statisticalKey: true } }) : [];
+  const known = new Map<string, Set<string | null>>();
+  for (const r of rows) (known.get(r.tariffNumber) ?? known.set(r.tariffNumber, new Set()).get(r.tariffNumber)!).add(r.statisticalKey);
+  return { name: ds.name, validFrom: ds.validFrom.toISOString().slice(0, 10), known };
+}
 
 const str = (v: { toString(): string } | null | undefined) => (v == null ? null : v.toString());
 
@@ -37,7 +50,7 @@ export async function recomputeOrder(db: TenantDb, orderId: string, userId: stri
   }));
 
   const rates = order.exchangeRates.map((r) => ({ id: r.id, fromCurrency: r.fromCurrency, toCurrency: r.toCurrency, rate: r.rate.toString(), validOn: r.validOn.toISOString().slice(0, 10), source: r.source }));
-  const issues = validateOrder(invoices, order.declarationCurrency);
+  const issues = validateOrder(invoices, order.declarationCurrency, {}, await loadTariffLookup(db, invoices));
   const result = consolidate(invoices.flatMap((i) => i.lines), profile, order.declarationCurrency, rates);
   // Fehlende Umrechnungskurse als kritischer Befund (einmal je Währungspaar)
   const missingRates = new Map<string, number>();
@@ -57,19 +70,20 @@ export async function recomputeOrder(db: TenantDb, orderId: string, userId: stri
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orderId}))`;
     await tx.declarationLine.deleteMany({ where: { orderId } });
     await tx.validationIssue.deleteMany({ where: { orderId, resolvedAt: null } });
-    for (const g of result.groups) {
-      await tx.declarationLine.create({
-        data: {
-          tenantId: order.tenantId, orderId, position: g.position, groupKey: g.groupKey,
-          tariffNumber: g.keys.tariffNumber ?? null, statisticalKey: g.keys.statisticalKey ?? null, originCountry: g.keys.originCountry ?? null,
-          preferenceStatus: (g.keys.preferenceStatus as "NONE" | "CLAIMED" | "UNKNOWN" | null) ?? "UNKNOWN", customsProcedure: g.keys.customsProcedure ?? null,
-          description: g.description, totalValue: g.totalValue ?? "0", currency: g.currency, totalQuantity: g.totalQuantity, quantityUnit: g.quantityUnit,
-          netWeightKg: g.netWeightKg, grossWeightKg: g.grossWeightKg,
-          attributes: { mergeable: g.mergeable, problems: g.problems, valueComplete: g.totalValue !== null, valueExact: g.totalValueExact, knownNetWeightKg: g.knownNetWeightKg, knownGrossWeightKg: g.knownGrossWeightKg, extra: g.keys.extra },
-          sources: { create: g.members.map((m) => ({ invoiceLineId: m.lineId, convertedValue: m.convertedValue ?? "0", exchangeRateId: m.exchangeRate?.id ?? null })) },
-        },
-      });
-    }
+    // Massen-Insert (statt 1 Abfrage je Position) – wichtig bei mehreren tausend Positionen
+    const declRows = result.groups.map((g) => ({
+      id: randomUUID(), tenantId: order.tenantId, orderId, position: g.position, groupKey: g.groupKey.slice(0, 2000),
+      tariffNumber: g.keys.tariffNumber?.slice(0, 9) ?? null, statisticalKey: g.keys.statisticalKey?.slice(0, 3) ?? null, originCountry: g.keys.originCountry?.slice(0, 2) ?? null,
+      preferenceStatus: ((g.keys.preferenceStatus as "NONE" | "CLAIMED" | "UNKNOWN" | null) ?? "UNKNOWN"), customsProcedure: g.keys.customsProcedure ?? null,
+      description: g.description, totalValue: g.totalValue ?? "0", currency: g.currency, totalQuantity: g.totalQuantity, quantityUnit: g.quantityUnit,
+      netWeightKg: g.netWeightKg, grossWeightKg: g.grossWeightKg,
+      attributes: { mergeable: g.mergeable, problems: g.problems, valueComplete: g.totalValue !== null, valueExact: g.totalValueExact, knownNetWeightKg: g.knownNetWeightKg, knownGrossWeightKg: g.knownGrossWeightKg, extra: g.keys.extra } as Prisma.InputJsonValue,
+      _members: g.members,
+    }));
+    for (let i = 0; i < declRows.length; i += 1000)
+      await tx.declarationLine.createMany({ data: declRows.slice(i, i + 1000).map(({ _members, ...r }) => r) });
+    const srcRows = declRows.flatMap((d) => d._members.map((m) => ({ declarationLineId: d.id, invoiceLineId: m.lineId, convertedValue: m.convertedValue ?? "0", exchangeRateId: m.exchangeRate?.id ?? null })));
+    for (let i = 0; i < srcRows.length; i += 2000) await tx.declarationLineSource.createMany({ data: srcRows.slice(i, i + 2000) });
     if (issues.length) await tx.validationIssue.createMany({ data: issues.map((i) => ({ tenantId: order.tenantId, orderId, ...i })) });
     await tx.customsOrder.update({ where: { id: orderId }, data: { status } });
     await tx.auditLog.create({ data: { tenantId: order.tenantId, userId, action: "RECOMPUTE", entityType: "CustomsOrder", entityId: orderId,

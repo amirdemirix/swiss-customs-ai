@@ -12,11 +12,12 @@ export default async function EditOrder({ params }: { params: Promise<{ id: stri
     ctx.db.customsOrder.findFirst({ where: { id } }),
     ctx.db.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
+  const profiles = await ctx.db.groupingProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isDefault: true } });
   if (!o) notFound();
   return (
     <>
       <PageHeader title={`Auftrag ${o.orderNumber} bearbeiten`} description="Jede Änderung wird feldgenau im Änderungsverlauf protokolliert." />
-      <OrderForm customers={customers} action={updateOrder.bind(null, o.id)} submitLabel="Änderungen speichern"
+      <OrderForm customers={customers} profiles={profiles} action={updateOrder.bind(null, o.id)} submitLabel="Änderungen speichern"
         defaults={{ ...o, orderDate: o.orderDate.toISOString().slice(0, 10) }} />
     </>
   );
