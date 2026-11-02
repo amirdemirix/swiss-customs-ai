@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Eye, FileSpreadsheet, FileText, Image as ImageIcon, Table2, Trash2 } from "lucide-react";
+import { Eye, FileSpreadsheet, FileText, Image as ImageIcon, RotateCw, Table2, Trash2 } from "lucide-react";
 import type { Document } from "@prisma/client";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { ActionForm } from "@/components/action-form";
 import { Dropzone } from "@/components/upload/dropzone";
 import { MAX_UPLOAD_BYTES } from "@/domain";
 import { formatDateTime } from "@/lib/utils";
-import { deleteDocument } from "./actions";
+import { deleteDocument, reprocess } from "./actions";
 import { AiExtractButton } from "@/components/upload/ai-extract-button";
 
 const STATUS: Record<Document["status"], { label: string; tone: "neutral" | "info" | "success" | "critical" | "warning" }> = {
@@ -38,14 +38,14 @@ export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai 
       )}
       {!ai.available && docs.some((d) => (d.kind === "PDF_TEXT" || d.kind === "PDF_SCAN" || d.kind === "IMAGE") && !d.lineCount) && (
         <p className="border-b bg-warning-soft px-5 py-2.5 text-sm">
-          <strong>Hinweis:</strong> Aus PDFs und Scans werden ohne KI-Erkennung nur Kopfdaten gelesen. Für Positionen: Excel/CSV derselben Rechnung importieren,
-          Positionen in der Kontrollansicht erfassen (Klick auf die Rechnungsnummer) oder die KI-Erkennung einrichten.
+          <strong>Hinweis:</strong> Bei einigen Belegen wurden keine Positionen gefunden (Scan/Foto oder ungewöhnliches Tabellenlayout). Positionen in der
+          Kontrollansicht erfassen (Klick auf die Rechnungsnummer), Excel/CSV derselben Rechnung importieren oder die KI-Erkennung einrichten.
         </p>
       )}
       <ul className="divide-y text-sm">
         {docs.map((d) => {
           const Icon = d.kind === "SPREADSHEET" || d.kind === "CSV" ? FileSpreadsheet : d.kind === "IMAGE" ? ImageIcon : FileText;
-          const sheet = d.kind === "SPREADSHEET" || d.kind === "CSV";
+          const sheet = d.kind === "SPREADSHEET" || d.kind === "CSV" || (d.kind === "PDF_TEXT" && !!d.lineCount);
           return (
             <li key={d.id} className="flex flex-wrap items-center gap-3 px-5 py-2.5">
               <Icon className="size-4 shrink-0 text-muted-foreground" />
@@ -54,9 +54,10 @@ export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai 
                   <Link href={`/auftraege/${orderId}/dokumente/${d.id}`} className="truncate font-medium text-primary hover:underline">{d.fileName}</Link>
                   <Badge tone={STATUS[d.status].tone}>{STATUS[d.status].label}</Badge>
                   {d.duplicateOfId && <Badge tone="warning" title="Identische Datei in anderem Auftrag">Duplikat</Badge>}
+                  {d.kind === "PDF_TEXT" && !!d.lineCount && <Badge tone="info" title="Positionstabelle aus dem PDF-Text gelesen (ohne KI) – bitte prüfen">{d.lineCount} Positionen aus PDF-Tabelle</Badge>}
                   {(d.kind === "PDF_TEXT" || d.kind === "PDF_SCAN" || d.kind === "IMAGE") && d.status !== "PROCESSING" && !d.lineCount && (
                     <Badge tone="warning" title="Positionen aus PDFs/Bildern liest nur die KI-Erkennung – oder manuell in der Kontrollansicht erfassen">
-                      {d.kind === "PDF_TEXT" ? "nur Kopfdaten gelesen – Positionen fehlen" : "Positionen fehlen"}
+                      {d.kind === "PDF_TEXT" ? "keine Positionstabelle erkannt" : "Scan – Positionen fehlen"}
                     </Badge>
                   )}
                 </div>
@@ -69,11 +70,16 @@ export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai 
               <div className="flex items-center gap-1">
                 {sheet && d.status === "EXTRACTED" && canUpload && !locked && (
                   <Link href={`/auftraege/${orderId}/dokumente/${d.id}/import`} className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium hover:bg-muted">
-                    <Table2 className="size-3.5" />{d._count.invoices ? "Neu zuordnen" : "Spalten zuordnen"}
+                    <Table2 className="size-3.5" />{d.kind === "PDF_TEXT" ? "Tabelle prüfen/zuordnen" : d._count.invoices ? "Neu zuordnen" : "Spalten zuordnen"}
                   </Link>
                 )}
                 {(d.kind === "PDF_TEXT" || d.kind === "PDF_SCAN" || d.kind === "IMAGE") && canUpload && !locked && ai.available && (d.status !== "PROCESSING") && (
                   <AiExtractButton documentId={d.id} label={d._count.invoices && d.kind !== "PDF_TEXT" ? "Erneut erkennen" : "KI-Erkennung"} />
+                )}
+                {d.kind === "PDF_TEXT" && canUpload && !locked && (
+                  <ActionForm action={reprocess.bind(null, orderId, d.id)} confirm={`„${d.fileName}“ neu einlesen? Nicht bestätigte Rechnungsdaten dieses Belegs werden ersetzt.`}>
+                    <button title="Mit aktueller Erkennung neu einlesen" className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium hover:bg-muted"><RotateCw className="size-3.5" />Neu einlesen</button>
+                  </ActionForm>
                 )}
                 <Link href={`/auftraege/${orderId}/dokumente/${d.id}`} title="Ansehen" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted"><Eye className="size-4" /></Link>
                 {canDelete && !locked && (

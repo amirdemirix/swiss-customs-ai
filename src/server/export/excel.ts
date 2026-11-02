@@ -71,7 +71,7 @@ export async function buildOrderWorkbook(d: ExportData, meta: { userName: string
   ]);
   for (const inv of order.invoices) for (const l of inv.lines) {
     const fm = (l.fieldMeta ?? {}) as { source?: { sheet?: string; row?: number } | string; page?: number };
-    const loc = typeof fm.source === "object" && fm.source ? `Blatt ${fm.source.sheet}, Zeile ${fm.source.row}` : fm.page ? `Seite ${fm.page}` : fm.source === "user" ? "manuell erfasst" : "";
+    const loc = fm.page ? `Seite ${fm.page}` : typeof fm.source === "object" && fm.source ? `Blatt ${fm.source.sheet}, Zeile ${fm.source.row}` : fm.source === "user" ? "manuell erfasst" : "";
     s2.addRow({ inv: inv.invoiceNumber, no: l.lineNo, art: l.articleNumber, desc: l.description, tariff: l.tariffNumber,
       tsrc: l.tariffNumberSource === "USER" ? "manuell" : l.tariffNumberSource === "INVOICE" ? "Rechnung" : l.tariffNumberSource ?? "", key: l.statisticalKey, origin: l.originCountry,
       qty: num(l.quantity), unit: l.unit, up: num(l.unitPrice), amt: num(l.lineAmount), cur: inv.currency, conv: d.converted.has(l.id) ? Number(d.converted.get(l.id)) : null,

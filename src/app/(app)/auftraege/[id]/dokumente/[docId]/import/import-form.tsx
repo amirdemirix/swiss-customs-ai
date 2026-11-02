@@ -12,12 +12,13 @@ interface SheetPrep { name: string; totalRows: number; rows: string[][]; headerR
 const sel = "h-8 w-full rounded-md border bg-surface px-2 text-sm";
 const REQUIRED: ImportField[] = ["tariffNumber", "originCountry", "lineAmount"];
 
-export function ImportForm({ orderId, documentId, sheets }: { orderId: string; documentId: string; sheets: SheetPrep[] }) {
+export function ImportForm({ orderId, documentId, sheets, initialDefaults }: { orderId: string; documentId: string; sheets: SheetPrep[];
+  initialDefaults?: { invoiceNumber: string; invoiceDate: string; supplierName: string; currency: string } }) {
   const [sheetIdx, setSheetIdx] = useState(0);
   const sheet = sheets[sheetIdx];
   const [headerRow, setHeaderRow] = useState(sheet.headerRow);
   const [map, setMap] = useState<ColumnMap>(sheet.map);
-  const [defaults, setDefaults] = useState({ invoiceNumber: "", invoiceDate: "", supplierName: "", currency: "" });
+  const [defaults, setDefaults] = useState(initialDefaults ?? { invoiceNumber: "", invoiceDate: "", supplierName: "", currency: "" });
   const [state, action, pending] = useActionState<ImportState, FormData>(runImport.bind(null, orderId, documentId), {});
 
   const headers = sheet.rows[headerRow] ?? [];

@@ -1,11 +1,12 @@
 import type { DocumentKind, DocumentStatus, Prisma } from "@prisma/client";
-import { detectFileType, detectInvoiceHeader, looksScanned, MIME, safeFileName, type DetectedHeader } from "@/domain";
+import { autoMapColumns, detectFileType, detectInvoiceHeader, looksScanned, MIME, reconstructPdfTable, safeFileName, type DetectedHeader } from "@/domain";
 import type { TenantDb } from "../tenant-db";
 import { sha256 } from "../storage/crypto";
-import { storeFile } from "../storage/file-store";
+import { readFile, storeFile } from "../storage/file-store";
 import { extractPdfText } from "../parsing/pdf";
 import { readCsv, readXlsx } from "../parsing/spreadsheet";
 import { recomputeOrder } from "./consolidation";
+import { importSpreadsheet } from "./spreadsheet-import";
 
 export interface Actor { tenantId: string; userId: string }
 
@@ -44,10 +45,8 @@ export async function ingestDocument(db: TenantDb, actor: Actor, orderId: string
   const warning = same ? `Identische Datei existiert bereits in Auftrag ${same.order.orderNumber}.` : undefined;
 
   try {
-    const r = await processDocument(db, actor, doc.id, orderId, t.type, data);
-    await db.document.update({ where: { id: doc.id }, data: { storageKey, ...r.update } });
-    if (r.update.kind === "PDF_TEXT") await recomputeOrder(db, orderId, actor.userId); // neuer Rechnungskopf → Prüfung aktualisieren
-    return { ok: true, documentId: doc.id, status: r.update.status, kind: r.update.kind ?? kind, message: r.message, warning };
+    const r = await finishProcessing(db, actor, doc.id, orderId, t.type, data, storageKey);
+    return { ok: true, documentId: doc.id, status: r.status, kind: r.kind ?? kind, message: r.message, warning };
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 300) : "Unbekannter Fehler";
     await db.document.update({ where: { id: doc.id }, data: { storageKey, status: "FAILED", errorMessage: msg } });
@@ -55,19 +54,66 @@ export async function ingestDocument(db: TenantDb, actor: Actor, orderId: string
   }
 }
 
+/** Verarbeitet einen gespeicherten Beleg und übernimmt erkannte Tabellen (gemeinsam für Upload und „Neu einlesen“). */
+async function finishProcessing(db: TenantDb, actor: Actor, documentId: string, orderId: string, type: string, data: Buffer, storageKey?: string) {
+  const r = await processDocument(db, actor, documentId, orderId, type, data);
+  await db.document.update({ where: { id: documentId }, data: { ...(storageKey ? { storageKey } : {}), errorMessage: null, ...r.update } });
+  let message = r.message;
+  if (r.autoImport) {
+    // Positionstabelle im PDF erkannt → wie Excel importieren, Ergebnis immer „zu prüfen“
+    try {
+      const res = await importSpreadsheet(db, actor, { documentId, sheetIndex: 0, headerRow: 0, map: r.autoImport.map, defaults: r.autoImport.defaults, saveMapping: false,
+        reviewStatus: "NEEDS_REVIEW", method: "pdf-table" });
+      message = `${r.update.pageCount ?? 1} Seite(n) gelesen, ${res.lines} Positionen aus der Tabelle erkannt (ohne KI) – bitte in der Kontrolle prüfen.`;
+    } catch (e) {
+      await createHeaderDraft(db, actor, orderId, documentId, r.autoImport.header);
+      await recomputeOrder(db, orderId, actor.userId);
+      message = `Kopfdaten gelesen; Tabelle konnte nicht übernommen werden (${e instanceof Error ? e.message : "Fehler"}).`;
+    }
+  } else if (r.update.kind === "PDF_TEXT") await recomputeOrder(db, orderId, actor.userId);
+  return { status: r.update.status, kind: r.update.kind, message };
+}
+
+/** Liest einen bereits gespeicherten PDF-Beleg mit der aktuellen Erkennung neu ein (ersetzt nicht bestätigte Rechnungen). */
+export async function reprocessDocument(db: TenantDb, actor: Actor, documentId: string): Promise<{ ok: boolean; message: string }> {
+  const doc = await db.document.findFirst({ where: { id: documentId, deletedAt: null }, include: { order: { select: { status: true } }, invoices: { select: { reviewStatus: true } } } });
+  if (!doc) return { ok: false, message: "Dokument nicht gefunden." };
+  if (doc.order.status === "COMPLETED" || doc.order.status === "ARCHIVED") return { ok: false, message: "Auftrag ist abgeschlossen." };
+  if (doc.mimeType !== "application/pdf") return { ok: false, message: "Neu einlesen ist für PDFs vorgesehen." };
+  if (doc.invoices.some((i) => i.reviewStatus === "CONFIRMED")) return { ok: false, message: "Rechnung aus diesem Beleg ist bereits bestätigt." };
+  const data = await readFile(db, actor.tenantId, doc.id);
+  if (!data) return { ok: false, message: "Datei nicht verfügbar." };
+  await db.invoice.deleteMany({ where: { documentId: doc.id } });
+  const r = await finishProcessing(db, actor, doc.id, doc.orderId, "PDF", data);
+  await db.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.userId, action: "REPROCESS", entityType: "Document", entityId: doc.id, newValue: { message: r.message } } });
+  return { ok: true, message: r.message };
+}
+
+type AutoImport = { map: ReturnType<typeof autoMapColumns>; defaults: { invoiceNumber: string | null; invoiceDate: string | null; currency: string | null }; header: DetectedHeader };
+
 async function processDocument(db: TenantDb, actor: Actor, documentId: string, orderId: string, type: string, data: Buffer):
-  Promise<{ update: Prisma.DocumentUpdateInput & { status: DocumentStatus; kind?: DocumentKind }; message: string }> {
+  Promise<{ update: Prisma.DocumentUpdateInput & { status: DocumentStatus; kind?: DocumentKind; pageCount?: number }; message: string; autoImport?: AutoImport }> {
   if (type === "PDF") {
-    const { pages, pageCount } = await extractPdfText(data);
+    const { pages, pageCount, items } = await extractPdfText(data);
     if (looksScanned(pages)) {
-      return { update: { kind: "PDF_SCAN", status: "UPLOADED", pageCount, extractedText: { pages } }, message: "Gescanntes PDF ohne Textlayer – Erkennung folgt mit OCR/KI (Phase 5)." };
+      return { update: { kind: "PDF_SCAN", status: "UPLOADED", pageCount, extractedText: { pages } }, message: "Gescanntes PDF ohne Textlayer – Positionen über die KI-Erkennung oder manuell erfassen." };
     }
     const header = detectInvoiceHeader(pages);
+    const table = items.length ? reconstructPdfTable(items) : null;
+    if (table) {
+      const map = autoMapColumns(table.rows[0]);
+      return {
+        update: { kind: "PDF_TEXT", status: "EXTRACTED", pageCount, detectedHeader: header as unknown as Prisma.InputJsonValue,
+          extractedText: { pages, sheets: [{ name: "PDF-Tabelle", rows: table.rows, rowPages: table.rowPages }] } as unknown as Prisma.InputJsonValue },
+        message: "Tabelle erkannt.",
+        autoImport: { map, header, defaults: { invoiceNumber: header.invoiceNumber?.value ?? null, invoiceDate: header.invoiceDate?.value ?? null, currency: header.currency?.value ?? null } },
+      };
+    }
     await createHeaderDraft(db, actor, orderId, documentId, header);
     const found = Object.values(header).filter(Boolean).length;
     return {
       update: { kind: "PDF_TEXT", status: "EXTRACTED", pageCount, extractedText: { pages }, detectedHeader: header as unknown as Prisma.InputJsonValue },
-      message: `${pageCount} Seite(n) gelesen, ${found}/4 Kopfdaten erkannt (Vorschläge). Positionen: Erfassung/KI in Phase 5.`,
+      message: `${pageCount} Seite(n) gelesen, ${found}/4 Kopfdaten erkannt. Keine Positionstabelle erkannt – KI-Erkennung oder manuelle Erfassung.`,
     };
   }
   if (type === "XLSX" || type === "CSV") {

@@ -11,10 +11,13 @@ export interface ImportRequest {
   map: ColumnMap;
   defaults: ImportDefaults;
   saveMapping: boolean;
+  /** Prüfstatus der erzeugten Rechnungen (PDF-Tabellen immer „zu prüfen“) */
+  reviewStatus?: "EXTRACTED" | "NEEDS_REVIEW";
+  method?: "spreadsheet-import" | "pdf-table";
 }
 
-export function getSheets(doc: { extractedText: Prisma.JsonValue }): { name: string; rows: string[][] }[] {
-  const t = doc.extractedText as { sheets?: { name: string; rows: string[][] }[] } | null;
+export function getSheets(doc: { extractedText: Prisma.JsonValue }): { name: string; rows: string[][]; rowPages?: number[] }[] {
+  const t = doc.extractedText as { sheets?: { name: string; rows: string[][]; rowPages?: number[] }[] } | null;
   return t?.sheets ?? [];
 }
 
@@ -44,8 +47,8 @@ export async function importSpreadsheet(db: TenantDb, actor: Actor, req: ImportR
           tenantId: actor.tenantId, orderId: doc.orderId, documentId: doc.id,
           invoiceNumber: inv.invoiceNumber, invoiceDate: inv.invoiceDate ? new Date(inv.invoiceDate) : null,
           supplierName: inv.supplierName, currency: inv.currency, totalAmount: inv.totalAmount,
-          reviewStatus: "EXTRACTED",
-          extractionMeta: { method: "spreadsheet-import", sheet: sheet.name, headerRow: req.headerRow + 1, map: req.map } as Prisma.InputJsonValue,
+          reviewStatus: req.reviewStatus ?? "EXTRACTED",
+          extractionMeta: { method: req.method ?? "spreadsheet-import", sheet: sheet.name, headerRow: req.headerRow + 1, map: req.map } as Prisma.InputJsonValue,
           lines: {
             create: inv.lines.map((l) => ({
               tenantId: actor.tenantId, lineNo: l.lineNo, articleNumber: l.articleNumber, description: l.description,
@@ -53,7 +56,8 @@ export async function importSpreadsheet(db: TenantDb, actor: Actor, req: ImportR
               statisticalKey: l.statisticalKey, originCountry: l.originCountry, originSource: l.originCountry ? "INVOICE" : null,
               preferenceStatus: l.preferenceStatus, quantity: l.quantity, unit: l.unit, unitPrice: l.unitPrice, lineAmount: l.lineAmount,
               netWeightKg: l.netWeightKg, grossWeightKg: l.grossWeightKg, packaging: l.packaging,
-              fieldMeta: { source: { sheet: sheet.name, row: l.sourceRow }, raw: l.raw } as Prisma.InputJsonValue,
+              reviewStatus: req.reviewStatus === "NEEDS_REVIEW" ? "NEEDS_REVIEW" : "EXTRACTED",
+              fieldMeta: { source: { sheet: sheet.name, row: l.sourceRow }, page: sheet.rowPages?.[l.sourceRow - 1] ?? null, raw: l.raw } as Prisma.InputJsonValue,
             })),
           },
         },

@@ -55,10 +55,12 @@ export async function buildPdf(): Promise<Buffer> {
   line("Rechnungsdatum: 22.10.2026");
   line("Kunde: Beispiel Technik GmbH, Zuerich");
   y -= 10;
-  line("Pos  Artikel   Bezeichnung              Tarif-Nr.   Ursprung  Menge  Preis EUR  Betrag EUR", bold, 9);
-  line("1    WZ-10     Schraubendreher-Set      8205.4000   DE        50     12.40      620.00", font, 9);
-  line("2    WZ-20     Zange, verchromt         8203.2000   DE        30     18.90      567.00", font, 9);
-  line("3    WZ-30     Bohrer-Set HSS           8207.5000   CN        40     9.75       390.00", font, 9);
+  const cols = [50, 80, 140, 300, 370, 425, 470, 530];
+  const row = (cells: string[], f = font) => { cells.forEach((c, i) => page.drawText(c, { x: cols[i], y, size: 9, font: f })); y -= 15; };
+  row(["Pos", "Artikel", "Bezeichnung", "Tarif-Nr.", "Ursprung", "Menge", "Preis EUR", "Betrag EUR"], bold);
+  row(["1", "WZ-10", "Schraubendreher-Set", "8205.4000", "DE", "50", "12.40", "620.00"]);
+  row(["2", "WZ-20", "Zange, verchromt", "8203.2000", "DE", "30", "18.90", "567.00"]);
+  row(["3", "WZ-30", "Bohrer-Set HSS", "8207.5000", "CN", "40", "9.75", "390.00"]);
   y -= 10;
   line("Gesamtbetrag EUR 1'577.00", bold, 11);
   line("Nettogewicht 48.500 kg / Bruttogewicht 55.200 kg");

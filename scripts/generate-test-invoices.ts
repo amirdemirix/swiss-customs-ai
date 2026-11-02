@@ -65,8 +65,8 @@ async function pdf(inv: Inv) {
   t(`Rechnungsdatum: ${inv.date.split("-").reverse().join(".")}`, 560, 535, 10);
   t(`Währung: ${inv.currency}`, 560, 521, 10);
   t("Empfänger: Beispiel Import AG, Bahnhofstrasse 1, 8001 Zürich, CH", 40, 495, 10);
-  const cols = [40, 65, 125, 330, 405, 455, 505, 560, 640, 720];
-  const head = ["Pos", "Artikel", "Bezeichnung", "Tarif-Nr.", "Ursprung", "Menge", "Einheit", `Preis ${inv.currency}`, `Betrag ${inv.currency}`, "Netto/Brutto kg"];
+  const cols = [40, 65, 120, 320, 390, 440, 490, 535, 605, 680, 745];
+  const head = ["Pos", "Artikel", "Bezeichnung", "Tarif-Nr.", "Ursprung", "Menge", "Einheit", `Preis ${inv.currency}`, `Betrag ${inv.currency}`, "Netto kg", "Brutto kg"];
   let y = 465;
   page.drawRectangle({ x: 36, y: y - 4, width: 770, height: 16, color: rgb(0.9, 0.92, 0.96) });
   head.forEach((h, i) => t(h, cols[i], y, 8, b));
@@ -74,10 +74,10 @@ async function pdf(inv: Inv) {
   inv.lines.forEach((l, i) => {
     y -= 18;
     const a = amount(l[4], l[5]); total += a; nw += l[6]; gw += l[7];
-    [String(i + 1), l[0], l[1], l[2], l[3], String(l[4]), "PCE", fmt(l[5]), fmt(a), `${fmt(l[6], 3)} / ${fmt(l[7], 3)}`].forEach((v, k) => t(v, cols[k], y, 8));
+    [String(i + 1), l[0], l[1], l[2], l[3], String(l[4]), "PCE", fmt(l[5]), fmt(a), fmt(l[6], 3), fmt(l[7], 3)].forEach((v, k) => t(v, cols[k], y, 8));
   });
   y -= 28;
-  t(`Gesamtbetrag ${inv.currency} ${fmt(total)}`, 560, y, 11, b);
+  t(`Gesamtbetrag ${inv.currency} ${fmt(total)}`, 535, y, 11, b);
   t(`Nettogewicht ${fmt(nw, 3)} kg / Bruttogewicht ${fmt(gw, 3)} kg`, 40, y, 9);
   t("Lieferbedingung: DAP Zürich. Ursprungsangaben gemäss Lieferant.", 40, y - 16, 9);
   return Buffer.from(await doc.save());

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getContext, assertCan, audit } from "@/server/context";
 import { recomputeOrder } from "@/server/services/consolidation";
 import { importSpreadsheet } from "@/server/services/spreadsheet-import";
+import { reprocessDocument } from "@/server/services/documents";
 import type { ActionResult } from "@/components/action-form";
 import { IMPORT_FIELDS, type ColumnMap, type ImportField, type RowProblem } from "@/domain";
 
@@ -21,6 +22,12 @@ export async function deleteDocument(orderId: string, documentId: string, _p: Ac
   await recomputeOrder(ctx.db, orderId, ctx.userId);
   revalidatePath(`/auftraege/${orderId}`);
   return { ok: true };
+}
+
+async function isPdf(documentId: string) {
+  const ctx = await getContext();
+  const d = await ctx.db.document.findFirst({ where: { id: documentId }, select: { kind: true } });
+  return d?.kind === "PDF_TEXT";
 }
 
 export type ImportState = { error?: string; result?: { invoices: number; lines: number; problems: RowProblem[] } };
@@ -46,10 +53,19 @@ export async function runImport(orderId: string, documentId: string, _p: ImportS
       documentId, sheetIndex: Number(fd.get("sheet") ?? 0), headerRow: Number(fd.get("headerRow") ?? 0), map,
       defaults: { invoiceNumber: str("default.invoiceNumber"), invoiceDate: date, supplierName: str("default.supplierName"), currency: cur },
       saveMapping: fd.get("saveMapping") === "on",
+      ...(await isPdf(documentId) ? { reviewStatus: "NEEDS_REVIEW" as const, method: "pdf-table" as const } : {}),
     });
     revalidatePath(`/auftraege/${orderId}`);
     return { result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Import fehlgeschlagen." };
   }
+}
+
+export async function reprocess(orderId: string, documentId: string, _p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  const ctx = await getContext();
+  assertCan(ctx, "document.upload");
+  const r = await reprocessDocument(ctx.db, { tenantId: ctx.tenantId, userId: ctx.userId }, documentId);
+  revalidatePath(`/auftraege/${orderId}`);
+  return r.ok ? { ok: true } : { error: r.message };
 }
