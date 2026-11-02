@@ -56,7 +56,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       />
 
       <div className="grid gap-6 [&>*]:min-w-0">
-        <DocumentsCard orderId={o.id} docs={o.documents} canUpload={can(ctx.role, "document.upload")} canDelete={can(ctx.role, "document.delete")} locked={isLocked(o.status)} ai={ai} />
+        <DocumentsCard orderId={o.id} docs={o.documents.map((d) => ({ ...d, lineCount: d.invoices.reduce((a, i) => a + i._count.lines, 0) }))} canUpload={can(ctx.role, "document.upload")} canDelete={can(ctx.role, "document.delete")} locked={isLocked(o.status)} ai={ai} />
         <RatesCard orderId={o.id} target={o.declarationCurrency} currencies={o.invoices.map((i) => i.currency).filter((c): c is string => !!c)} rates={o.exchangeRates} canEdit={can(ctx.role, "order.write") && !isLocked(o.status)} />
         <Card>
           <CardHeader>
@@ -116,7 +116,13 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 );
               })}
             </div>
-            {!o.declarationLines.length && <p className="py-10 text-center text-sm text-muted-foreground">Noch nicht gruppiert. „Neu prüfen &amp; gruppieren“ ausführen.</p>}
+            {!o.declarationLines.length && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                {o.invoices.length && o.invoices.every((i) => i._count.lines === 0)
+                  ? "Die Rechnungen haben noch keine Positionen – Excel/CSV importieren, KI-Erkennung nutzen oder Positionen in der Kontrollansicht erfassen."
+                  : o.invoices.length ? "Noch nicht gruppiert. „Neu prüfen & gruppieren“ ausführen." : "Noch keine Rechnungen – Belege oben hochladen."}
+              </p>
+            )}
           </div>
         </Card>
 

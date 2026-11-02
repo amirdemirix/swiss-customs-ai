@@ -16,7 +16,7 @@ const STATUS: Record<Document["status"], { label: string; tone: "neutral" | "inf
 };
 const KIND: Record<Document["kind"], string> = { PDF_TEXT: "PDF", PDF_SCAN: "PDF-Scan", IMAGE: "Bild", SPREADSHEET: "Excel", CSV: "CSV", UNKNOWN: "?" };
 
-type Doc = Pick<Document, "id" | "fileName" | "kind" | "status" | "sizeBytes" | "pageCount" | "errorMessage" | "duplicateOfId" | "createdAt"> & { _count: { invoices: number } };
+type Doc = Pick<Document, "id" | "fileName" | "kind" | "status" | "sizeBytes" | "pageCount" | "errorMessage" | "duplicateOfId" | "createdAt"> & { _count: { invoices: number }; lineCount?: number };
 
 export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai }: { orderId: string; docs: Doc[]; canUpload: boolean; canDelete: boolean; locked: boolean; ai: { available: boolean; reason?: string } }) {
   return (
@@ -36,6 +36,12 @@ export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai 
           </p>
         </div>
       )}
+      {!ai.available && docs.some((d) => (d.kind === "PDF_TEXT" || d.kind === "PDF_SCAN" || d.kind === "IMAGE") && !d.lineCount) && (
+        <p className="border-b bg-warning-soft px-5 py-2.5 text-sm">
+          <strong>Hinweis:</strong> Aus PDFs und Scans werden ohne KI-Erkennung nur Kopfdaten gelesen. Für Positionen: Excel/CSV derselben Rechnung importieren,
+          Positionen in der Kontrollansicht erfassen (Klick auf die Rechnungsnummer) oder die KI-Erkennung einrichten.
+        </p>
+      )}
       <ul className="divide-y text-sm">
         {docs.map((d) => {
           const Icon = d.kind === "SPREADSHEET" || d.kind === "CSV" ? FileSpreadsheet : d.kind === "IMAGE" ? ImageIcon : FileText;
@@ -48,6 +54,11 @@ export function DocumentsCard({ orderId, docs, canUpload, canDelete, locked, ai 
                   <Link href={`/auftraege/${orderId}/dokumente/${d.id}`} className="truncate font-medium text-primary hover:underline">{d.fileName}</Link>
                   <Badge tone={STATUS[d.status].tone}>{STATUS[d.status].label}</Badge>
                   {d.duplicateOfId && <Badge tone="warning" title="Identische Datei in anderem Auftrag">Duplikat</Badge>}
+                  {(d.kind === "PDF_TEXT" || d.kind === "PDF_SCAN" || d.kind === "IMAGE") && d.status !== "PROCESSING" && !d.lineCount && (
+                    <Badge tone="warning" title="Positionen aus PDFs/Bildern liest nur die KI-Erkennung – oder manuell in der Kontrollansicht erfassen">
+                      {d.kind === "PDF_TEXT" ? "nur Kopfdaten gelesen – Positionen fehlen" : "Positionen fehlen"}
+                    </Badge>
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {KIND[d.kind]} · {(d.sizeBytes / 1024).toFixed(0)} KB{d.pageCount ? ` · ${d.pageCount} S.` : ""} · {formatDateTime(d.createdAt)}

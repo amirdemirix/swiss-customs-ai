@@ -17,7 +17,8 @@ export async function getOrderOverview(db: TenantDb, id: string) {
       exchangeRates: { orderBy: { fromCurrency: "asc" } },
       documents: {
         where: { deletedAt: null }, orderBy: { createdAt: "desc" },
-        select: { id: true, fileName: true, kind: true, status: true, sizeBytes: true, pageCount: true, errorMessage: true, duplicateOfId: true, createdAt: true, _count: { select: { invoices: true } } },
+        select: { id: true, fileName: true, kind: true, status: true, sizeBytes: true, pageCount: true, errorMessage: true, duplicateOfId: true, createdAt: true,
+          _count: { select: { invoices: true } }, invoices: { select: { _count: { select: { lines: true } } } } },
       },
       invoices: { orderBy: { invoiceNumber: "asc" }, include: { _count: { select: { lines: true } } } },
       declarationLines: {
